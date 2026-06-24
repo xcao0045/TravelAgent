@@ -95,8 +95,15 @@ if st.session_state.final_report:
             mime="text/markdown",
         )
     with col_actions[1]:
-        if st.button("📋 复制"):
-            st.toast("已复制到剪贴板")
+        st.components.v1.html(
+            f"""
+            <button onclick="navigator.clipboard.writeText({json.dumps(st.session_state.final_report)}).then(()=>{{this.innerText='✅ 已复制'}})"
+                    style="padding:6px 16px;border:1px solid #ddd;border-radius:8px;background:white;cursor:pointer;font-size:14px;line-height:1.5;">
+                📋 复制
+            </button>
+            """,
+            height=40,
+        )
 
     # === 第4步：微调对话 ===
     st.header("第4步：微调优化")
