@@ -97,15 +97,24 @@ def amap_multi_route_factory(client: AmapClient):
         total_duration = 0
         for i in range(len(points) - 1):
             result = client.direction(origin=points[i], destination=points[i + 1], mode=mode)
-            if result.get("status") == "1" and result.get("route", {}).get("paths"):
-                path = result["route"]["paths"][0]
+            if result.get("status") != "1":
+                lines.append(f"  {points[i]} → {points[i+1]}: 路线计算失败")
+                continue
+            route = result.get("route", {})
+            if mode == "transit" and route.get("transits"):
+                transit = route["transits"][0]
+                dist = 0
+                dur = int(transit.get("duration", 0))
+            elif route.get("paths"):
+                path = route["paths"][0]
                 dist = int(path.get("distance", 0))
                 dur = int(path.get("duration", 0))
-                total_distance += dist
-                total_duration += dur
-                lines.append(f"  {points[i]} → {points[i+1]}: {dist}米, {dur}秒")
             else:
                 lines.append(f"  {points[i]} → {points[i+1]}: 路线计算失败")
+                continue
+            total_distance += dist
+            total_duration += dur
+            lines.append(f"  {points[i]} → {points[i+1]}: {dist}米, {dur}秒")
         lines.append(f"总距离: {total_distance}米, 总耗时: {total_duration}秒")
         return "\n".join(lines)
     return amap_multi_route

@@ -1,4 +1,4 @@
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 from tools.amap_client import AmapClient
 from tools.amap_tools import create_amap_tools, amap_weather_factory
 
