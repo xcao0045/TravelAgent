@@ -15,7 +15,7 @@ class AmapClient:
 
     def weather(self, city: str) -> dict:
         """查询城市实时天气"""
-        return self._get("/weather/weatherInfo", {"city": city, "extensions": "base"})
+        return self._get("/weather/weatherInfo", {"city": city, "extensions": "all"})
 
     def poi_search(
         self,

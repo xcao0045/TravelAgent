@@ -47,7 +47,7 @@ def test_poi_search_returns_parsed_response():
     assert call_args["keywords"] == "熊猫基地"
 
 
-def test_amap_client_raises_on_http_error():
+def test_amap_client_handles_http_error_gracefully():
     client = AmapClient(api_key="test-key")
 
     with patch("tools.amap_client.requests.get") as mock_get:
