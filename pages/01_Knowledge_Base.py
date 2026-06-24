@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-import json
+import tempfile
 from datetime import datetime
 from config import Settings
 from rag.embedding import create_embeddings
@@ -68,9 +68,24 @@ with tab1:
                         "created_at": datetime.now().isoformat(),
                     }
                 )
-                vs.add_to_preferences([doc])
-                st.success(f"✅ '{name}' 已入库")
-                st.rerun()
+                # 去重检查
+                coll = vs.get_preferences_collection()
+                existing = coll.get()
+                result = dedup_pipeline(
+                    doc=doc, collection=coll,
+                    collection_type="preferences",
+                    existing_texts=existing.get("documents", []) or [],
+                    existing_metas=existing.get("metadatas", []) or [],
+                    options={"md5": True, "field": False, "semantic": False},
+                )
+                if result["status"] == "duplicate":
+                    st.warning(f"⚠️ '{name}' 内容重复，跳过入库")
+                else:
+                    if result["status"] == "suspected":
+                        st.warning(f"⚠️ '{name}' 疑似重复 ({result['reason']})，仍将入库")
+                    vs.add_to_preferences([doc])
+                    st.success(f"✅ '{name}' 已入库")
+                    st.rerun()
     else:
         with st.form("case_form"):
             destination = st.text_input("目的地")
@@ -92,9 +107,24 @@ with tab1:
                         "created_at": datetime.now().isoformat(),
                     }
                 )
-                vs.add_to_cases([doc])
-                st.success(f"✅ '{destination} {days}天' 案例已入库")
-                st.rerun()
+                # 去重检查
+                coll = vs.get_cases_collection()
+                existing = coll.get()
+                result = dedup_pipeline(
+                    doc=doc, collection=coll,
+                    collection_type="cases",
+                    existing_texts=existing.get("documents", []) or [],
+                    existing_metas=existing.get("metadatas", []) or [],
+                    options={"md5": True, "field": False, "semantic": False},
+                )
+                if result["status"] == "duplicate":
+                    st.warning(f"⚠️ '{destination} {days}天' 案例内容重复，跳过入库")
+                else:
+                    if result["status"] == "suspected":
+                        st.warning(f"⚠️ '{destination} {days}天' 疑似重复 ({result['reason']})，仍将入库")
+                    vs.add_to_cases([doc])
+                    st.success(f"✅ '{destination} {days}天' 案例已入库")
+                    st.rerun()
 
 # --- 文件上传 ---
 with tab2:
@@ -105,17 +135,48 @@ with tab2:
     uploaded_file = st.file_uploader("选择文件", type=["csv", "json", "md", "txt"])
     if uploaded_file:
         # Save to temp
-        tmp_path = f"/tmp/{uploaded_file.name}"
+        tmp_path = os.path.join(tempfile.gettempdir(), uploaded_file.name)
         with open(tmp_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
         try:
             docs = load_file_to_docs(tmp_path, collection_type)
-            if collection_type == "preferences":
-                vs.add_to_preferences(docs)
+            # 文件批量去重（MD5检查）
+            coll = vs.get_preferences_collection() if collection_type == "preferences" else vs.get_cases_collection()
+            existing = coll.get()
+            existing_texts = existing.get("documents", []) or []
+            existing_metas = existing.get("metadatas", []) or []
+
+            new_docs = []
+            dup_count = 0
+            for doc in docs:
+                result = dedup_pipeline(
+                    doc=doc, collection=coll,
+                    collection_type=collection_type,
+                    existing_texts=existing_texts,
+                    existing_metas=existing_metas,
+                    options={"md5": True, "field": False, "semantic": False},
+                )
+                if result["status"] == "duplicate":
+                    dup_count += 1
+                    continue
+                if result["status"] == "suspected":
+                    st.warning(f"⚠️ 疑似重复: {doc.page_content[:50]}... ({result['reason']})")
+                new_docs.append(doc)
+                # 更新已检查列表，防止本次上传内部重复
+                existing_texts.append(doc.page_content)
+                existing_metas.append(doc.metadata)
+
+            if new_docs:
+                if collection_type == "preferences":
+                    vs.add_to_preferences(new_docs)
+                else:
+                    vs.add_to_cases(new_docs)
+
+            if dup_count > 0:
+                st.warning(f"⚠️ {dup_count}条跳过(重复), {len(new_docs)}条新增")
             else:
-                vs.add_to_cases(docs)
-            st.success(f"✅ 成功导入 {len(docs)} 条数据")
+                st.success(f"✅ 成功导入 {len(new_docs)} 条数据")
         except Exception as e:
             st.error(f"导入失败: {e}")
         finally:

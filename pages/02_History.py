@@ -28,7 +28,11 @@ search_term = st.text_input("搜索目的地...")
 for filename in files:
     filepath = os.path.join(history_dir, filename)
     with open(filepath, "r", encoding="utf-8") as f:
-        session = json.load(f)
+        try:
+            session = json.load(f)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            st.warning(f"⚠️ 跳过损坏文件: {filename}")
+            continue
 
     destination = session.get("input", {}).get("destination", "未知")
     if search_term and search_term not in destination:
