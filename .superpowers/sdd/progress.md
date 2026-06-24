@@ -12,3 +12,9 @@ Task 4: complete (commits bf7375c..b790157, review clean, Minor items recorded)
 Minor: dead imports (unittest.mock, os), _collection private attr, missing type hint, Chroma recreation
 Task 5: complete (commits b790157..9c67ba5, review clean, Minor items recorded)
 Minor: missing fixture files, load_csv ignores collection_type, brittle title extraction, no malformed-data validation, naive datetime
+Task 6: complete (commits 9c67ba5..36d87d0, review clean)
+Task 7: complete (commits 36d87d0..a7d1392, review clean, Minor items recorded)
+Minor: traditional Chinese docstrings, no direct retrieve_cases test, redundant branches
+Task 8: complete (commits a7d1392..f92a8d7, review clean)
+Task 9: complete (commits f92a8d7..51847ab, review clean, Minor items recorded)
+Task 10: complete (commits 51847ab..60b6df8, review pending)
