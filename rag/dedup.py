@@ -1,5 +1,5 @@
 import hashlib
-from typing import Optional
+import sys
 from langchain_core.documents import Document
 
 
@@ -21,14 +21,13 @@ def check_field_duplicate(
 ) -> bool:
     """检查关键字段是否匹配"""
     if collection_type == "preferences":
-        # category + name + text content (approximate)
         for em in existing_metas:
             if (
                 em.get("category") == metadata.get("category")
                 and em.get("name") == metadata.get("name")
             ):
                 return True
-    else:  # cases
+    elif collection_type == "cases":
         for em in existing_metas:
             if (
                 em.get("destination") == metadata.get("destination")
@@ -36,6 +35,8 @@ def check_field_duplicate(
                 and em.get("title") == metadata.get("title")
             ):
                 return True
+    else:
+        return False
     return False
 
 
@@ -49,7 +50,8 @@ def check_semantic_duplicate(
         results = collection.similarity_search_with_relevance_scores(
             text, k=5
         )
-    except Exception:
+    except Exception as e:
+        print(f"语义去重失败: {e}", file=sys.stderr)
         return []
 
     duplicates = []
