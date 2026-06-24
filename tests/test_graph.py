@@ -28,9 +28,10 @@ def test_build_graph_compiles():
 
         graph = build_graph(settings)
         assert graph is not None
-        # Graph should have the key nodes
-        node_names = graph.get_graph().nodes.keys()
-        print(f"Graph nodes: {list(node_names)}")
+        # Graph should have the key nodes (LangGraph adds __start__ and __end__ internally)
+        node_names = list(graph.get_graph().nodes.keys())
+        user_nodes = {n for n in node_names if not n.startswith("__")}
+        assert user_nodes == {"orchestrator", "weather_agent", "attraction_agent", "hotel_agent", "synthesizer"}, f"Unexpected nodes: {node_names}"
 
 
 def test_orchestrator_node_parses_input():

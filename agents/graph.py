@@ -61,10 +61,12 @@ def _get_retriever():
 
 def _continue_to_sub_agents(state: TravelPlanState):
     """条件边：将任务扇出到三个子Agent"""
+    if state.get("destination", "").strip() == "":
+        return []
     return [
-        Send("weather_agent", {}),
-        Send("attraction_agent", {}),
-        Send("hotel_agent", {}),
+        Send("weather_agent", state),
+        Send("attraction_agent", state),
+        Send("hotel_agent", state),
     ]
 
 
@@ -83,11 +85,7 @@ def build_graph(settings: Settings):
 
     # 边
     graph.set_entry_point("orchestrator")
-    graph.add_conditional_edges("orchestrator", _continue_to_sub_agents, [
-        "weather_agent",
-        "attraction_agent",
-        "hotel_agent",
-    ])
+    graph.add_conditional_edges("orchestrator", _continue_to_sub_agents)
     graph.add_edge("weather_agent", "synthesizer")
     graph.add_edge("attraction_agent", "synthesizer")
     graph.add_edge("hotel_agent", "synthesizer")

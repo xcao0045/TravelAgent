@@ -6,12 +6,9 @@ def synthesizer_node(state: TravelPlanState) -> dict:
     汇总Agent：整合天气、景点、酒店、餐厅数据，
     结合高德路线规划Tool生成完整Markdown旅行方案。
     """
-    from agents.graph import _get_llm, _get_tools
+    from agents.graph import _get_llm
 
     llm = _get_llm()
-    tools = _get_tools()
-    route_tools = [t for t in tools if t.name in ("amap_route_plan", "amap_geo_code")]
-    llm_with_tools = llm.bind_tools(route_tools) if route_tools else llm
 
     destination = state["destination"]
     days = state["days"]
@@ -62,7 +59,7 @@ def synthesizer_node(state: TravelPlanState) -> dict:
 6. 预算明细
 7. 注意事项
 """
-    response = llm_with_tools.invoke(prompt)
+    response = llm.invoke(prompt)
     return {
         "final_report": response.content,
         "routes": [],  # 路线已在子Agent中通过amap_multi_route获取

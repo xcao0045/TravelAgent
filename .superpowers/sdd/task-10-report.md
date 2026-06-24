@@ -32,6 +32,27 @@ tests/test_graph.py::test_orchestrator_node_parses_input  PASSED
 
 Full project: **39 passed in 1.42s** (no regressions).
 
+## Task 10 Review Fixes
+
+### Issues Fixed
+
+| # | Severity | File | Fix |
+|---|----------|------|-----|
+| 1 | CRITICAL | `agents/graph.py` | Changed `Send("...", {})` to `Send("...", state)` to pass actual state dict |
+| 2 | HIGH | `agents/graph.py` | Added empty-destination guard: returns `[]` to skip fan-out when destination is blank |
+| 3 | MEDIUM | `agents/graph.py` | Removed redundant `path_map` from `add_conditional_edges` call |
+| 4 | LOW | `agents/synthesizer.py` | Removed unnecessary tool binding — uses `llm.invoke(prompt)` directly |
+| 5 | LOW | `tests/test_graph.py` | Added explicit node assertions (filters out `__start__`/`__end__` internal nodes) |
+
+### Test Results (post-fix)
+
+```
+tests/test_graph.py::test_build_graph_compiles            PASSED
+tests/test_graph.py::test_orchestrator_node_parses_input  PASSED
+
+Full project: **39 passed in 1.52s** (no regressions).
+```
+
 ## Commit
 
 ```
