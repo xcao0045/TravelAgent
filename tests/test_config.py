@@ -1,6 +1,16 @@
 import os
 from config import Settings
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _protect_env():
+    snapshot = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(snapshot)
+
 
 def test_settings_from_env_reads_all_fields():
     env_vars = {
