@@ -1,5 +1,20 @@
 .env
 __pycache__/
 *.pyc
-storage/chroma_*/
 .pytest_cache/
+
+# SDD work files — local development artifacts
+.superpowers/
+
+# pip editable install
+*.egg-info/
+
+# Runtime data — contains local user data, never commit
+storage/chroma_*/
+data/history/*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
