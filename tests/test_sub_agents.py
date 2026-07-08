@@ -25,12 +25,9 @@ def test_weather_agent_returns_report():
 
     # Build mock graph module (agents.graph does not exist yet — Task 10)
     mock_graph = MagicMock()
-    # agent calls llm.bind_tools(...).invoke(...), so wire the chain
     mock_llm_response = Mock(content="成都7月15日天气：晴，28°C，适宜出行")
-    mock_bound = Mock()
-    mock_bound.invoke.return_value = mock_llm_response
     mock_llm = Mock()
-    mock_llm.bind_tools.return_value = mock_bound
+    mock_llm.invoke.return_value = mock_llm_response
     mock_tools = [Mock(name="amap_weather")]
     mock_retriever = Mock()
     mock_retriever.retrieve_cases.return_value = []
@@ -80,10 +77,8 @@ def _inject_mock_graph(llm_response_content: str, tools: list | None = None,
     """Inject a mock agents.graph module into sys.modules and return the mocks."""
     mock_graph = MagicMock()
     mock_llm_response = Mock(content=llm_response_content)
-    mock_bound = Mock()
-    mock_bound.invoke.return_value = mock_llm_response
     mock_llm = Mock()
-    mock_llm.bind_tools.return_value = mock_bound
+    mock_llm.invoke.return_value = mock_llm_response
     mock_tools = tools or [Mock(name="amap_weather")]
     mock_retriever = Mock()
     if retrieve_cases_return is not None:

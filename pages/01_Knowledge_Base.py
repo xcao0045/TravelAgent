@@ -7,7 +7,7 @@ from rag.embedding import create_embeddings
 from rag.vector_store import VectorStoreManager
 from rag.data_loader import load_file_to_docs
 from rag.dedup import md5_hash, dedup_pipeline
-from langchain.schema import Document
+from langchain_core.documents import Document
 
 st.set_page_config(page_title="知识库管理", page_icon="📚")
 

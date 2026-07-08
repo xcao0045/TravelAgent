@@ -29,9 +29,6 @@ def attraction_agent_node(state: TravelPlanState) -> dict:
     )
     cases_context = "\n".join([d.page_content[:500] for d in rag_results["cases"]])
 
-    relevant_tools = [t for t in tools if t.name in ("amap_poi_search", "amap_multi_route")]
-    llm_with_tools = llm.bind_tools(relevant_tools)
-
     prompt = f"""你是旅游规划专家。为{destination}规划{days}天的景点和餐厅。
 
 用户偏好: {preferences}
@@ -40,14 +37,10 @@ def attraction_agent_node(state: TravelPlanState) -> dict:
 历史优秀案例参考:
 {cases_context}
 
-请:
-1. 用amap_poi_search搜索景点(category=attraction)和餐厅(category=restaurant)
-2. 结合偏好库标签筛选（如标签"适合看日落"优先推荐对应景点）
-3. 用amap_multi_route规划每日景点串联路线
-4. 输出JSON格式: {{"attractions": [...], "restaurants": [...]}}
+请直接推荐景点和餐厅，输出JSON格式: {{"attractions": [...], "restaurants": [...]}}
 每个推荐含: name, address, rating, reason(推荐理由), tags
 """
-    response = llm_with_tools.invoke(prompt)
+    response = llm.invoke(prompt)
 
     # 解析JSON
     import json

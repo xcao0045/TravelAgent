@@ -28,9 +28,6 @@ def hotel_agent_node(state: TravelPlanState) -> dict:
     )
     cases_context = "\n".join([d.page_content[:500] for d in rag_results["cases"]])
 
-    relevant_tools = [t for t in tools if t.name == "amap_poi_search"]
-    llm_with_tools = llm.bind_tools(relevant_tools)
-
     prompt = f"""你是酒店推荐专家。为{destination}筛选合适的酒店。
 
 用户偏好: {preferences}
@@ -39,13 +36,10 @@ def hotel_agent_node(state: TravelPlanState) -> dict:
 历史优秀案例参考:
 {cases_context}
 
-请:
-1. 用amap_poi_search搜索酒店(category=hotel)
-2. 结合偏好库标签筛选（如用户偏好"亲子"→优先推荐标签含"隔音好""儿童乐园"的酒店）
-3. 输出JSON格式: {{"hotels": [...]}}
+请直接推荐酒店，输出JSON格式: {{"hotels": [...]}}
 每个推荐含: name, address, rating, price_range, reason(推荐理由，需引用偏好库标签), matched_tags
 """
-    response = llm_with_tools.invoke(prompt)
+    response = llm.invoke(prompt)
 
     import json
     import re

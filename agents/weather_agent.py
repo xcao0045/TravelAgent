@@ -22,19 +22,16 @@ def weather_agent_node(state: TravelPlanState) -> dict:
     )
     case_context = "\n".join([d.page_content[:500] for d in case_docs])
 
-    # 绑定了天气工具
-    llm_with_tools = llm.bind_tools([t for t in tools if t.name == "amap_weather"])
-
-    prompt = f"""你是天气查询专家。请查询{destination}在{travel_date}前后的天气情况，并结合以下信息给出出行建议。
+    prompt = f"""你是天气查询专家。请根据你的知识，为{destination}在{travel_date}前后的天气情况给出预测和建议。
 
 用户偏好: {preferences}
 历史案例参考:
 {case_context}
 
 请输出:
-1. 天气预报（温度、降水、风力）
+1. 预测天气（温度、降水、风力）
 2. 穿衣建议
 3. 对行程的影响提示
 """
-    response = llm_with_tools.invoke(prompt)
+    response = llm.invoke(prompt)
     return {"weather_report": response.content}

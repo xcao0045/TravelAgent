@@ -10,7 +10,7 @@ __pycache__/
 *.egg-info/
 
 # Runtime data — contains local user data, never commit
-storage/chroma_*/
+storage/
 data/history/*.json
 
 # IDE
