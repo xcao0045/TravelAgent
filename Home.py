@@ -94,16 +94,8 @@ if st.session_state.final_report:
             file_name=f"{destination}_{days}天_旅行方案.md",
             mime="text/markdown",
         )
-    with col_actions[1]:
-        st.components.v1.html(
-            f"""
-            <button onclick="navigator.clipboard.writeText({json.dumps(st.session_state.final_report)}).then(()=>{{this.innerText='✅ 已复制'}})"
-                    style="padding:6px 16px;border:1px solid #ddd;border-radius:8px;background:white;cursor:pointer;font-size:14px;line-height:1.5;">
-                📋 复制
-            </button>
-            """,
-            height=40,
-        )
+    with col_actions[1], st.expander("📋 查看 Markdown 源码"):
+        st.code(st.session_state.final_report, language="markdown")
 
     # === 第4步：微调对话 ===
     st.header("第4步：微调优化")
@@ -140,7 +132,7 @@ if st.session_state.final_report:
         response = llm.invoke(refine_prompt)
         st.session_state.final_report = response.content
         st.session_state.chat_history.append(
-            {"role": "assistant", "content": f"方案已更新。\n\n{response.content[:200]}..."}
+            {"role": "assistant", "content": response.content}
         )
         st.rerun()
 
