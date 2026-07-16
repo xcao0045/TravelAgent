@@ -11,7 +11,7 @@ from langchain_core.documents import Document
 
 PAGE_SIZE = 5
 
-st.set_page_config(page_title="知识库管理", page_icon="📚")
+st.set_page_config(page_title="知识库管理", page_icon="📚", layout="wide")
 
 settings = Settings.from_env()
 
@@ -121,12 +121,14 @@ with tab2:
         allowed_types = ["json", "md", "txt", "csv"]
         st.info("支持格式: JSON, Markdown, TXT, CSV")
 
-    uploaded_file = st.file_uploader("选择文件", type=allowed_types)
-    if uploaded_file:
-        file_key = f"{uploaded_file.name}_{uploaded_file.size}"
-        if st.session_state.get("_kb_last_upload") == file_key:
-            st.stop()
+    if "_kb_upload_key" not in st.session_state:
+        st.session_state._kb_upload_key = 0
 
+    uploaded_file = st.file_uploader(
+        "选择文件", type=allowed_types,
+        key=f"kb_uploader_{st.session_state._kb_upload_key}",
+    )
+    if uploaded_file:
         # Save original to local archive
         archive_dir = os.path.join("data", "knowledge_base", collection_type)
         os.makedirs(archive_dir, exist_ok=True)
@@ -179,11 +181,12 @@ with tab2:
                 st.warning(f"⚠️ {dup_count}条跳过(重复), {len(new_docs)}条新增")
             else:
                 st.success(f"✅ 成功导入 {len(new_docs)} 条数据")
-            st.session_state["_kb_last_upload"] = file_key
         except Exception as e:
             st.error(f"导入失败: {e}")
         finally:
             os.unlink(tmp_path)
+            st.session_state._kb_upload_key += 1
+            st.rerun()
 
 st.divider()
 
