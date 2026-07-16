@@ -9,6 +9,8 @@ from rag.data_loader import load_file_to_docs
 from rag.dedup import md5_hash, dedup_pipeline
 from langchain_core.documents import Document
 
+PAGE_SIZE = 5
+
 st.set_page_config(page_title="知识库管理", page_icon="📚")
 
 settings = Settings.from_env()
@@ -24,24 +26,6 @@ def get_vector_store():
 vs = get_vector_store()
 
 st.title("📚 知识库管理")
-
-# 状态概览
-try:
-    prefs_count = vs.get_preferences_collection()._collection.count()
-except Exception:
-    prefs_count = 0
-try:
-    cases_count = vs.get_cases_collection()._collection.count()
-except Exception:
-    cases_count = 0
-
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("偏好库", f"{prefs_count} 条")
-with col2:
-    st.metric("案例库", f"{cases_count} 条")
-
-st.divider()
 
 # 录入目标库选择
 collection_type = st.radio("选择目标库", ["preferences", "cases"],
@@ -130,11 +114,14 @@ with tab1:
 
 # --- 文件上传 ---
 with tab2:
-    st.caption(f"上传文件到{collection_type}库")
-    supported = "CSV, JSON" if collection_type == "preferences" else "JSON, Markdown, TXT, CSV"
-    st.info(f"支持格式: {supported}")
+    if collection_type == "preferences":
+        allowed_types = ["csv", "json"]
+        st.info("支持格式: CSV, JSON")
+    else:
+        allowed_types = ["json", "md", "txt", "csv"]
+        st.info("支持格式: JSON, Markdown, TXT, CSV")
 
-    uploaded_file = st.file_uploader("选择文件", type=["csv", "json", "md", "txt"])
+    uploaded_file = st.file_uploader("选择文件", type=allowed_types)
     if uploaded_file:
         # Save original to local archive
         archive_dir = os.path.join("data", "knowledge_base", collection_type)
@@ -177,6 +164,8 @@ with tab2:
                 existing_metas.append(doc.metadata)
 
             if new_docs:
+                for d in new_docs:
+                    d.metadata["source_file"] = archive_path
                 if collection_type == "preferences":
                     vs.add_to_preferences(new_docs)
                 else:
@@ -193,30 +182,81 @@ with tab2:
 
 st.divider()
 
-# 已有数据概览
-st.subheader("📋 已有数据")
-search = st.text_input("搜索", placeholder="输入关键词...")
+# 文档列表
+st.subheader("📋 已有文档")
+search = st.text_input("搜索（可选）", placeholder="输入关键词筛选，留空查看全部...")
 
-if search:
-    collection = vs.get_preferences_collection() if collection_type == "preferences" else vs.get_cases_collection()
-    raw_results = collection.similarity_search_with_relevance_scores(search, k=20)
+docs = vs.list_documents(collection_type)
 
-    # 按 source_md5 分组，每组保留最高分 chunk
-    groups: dict[str, dict] = {}
-    for doc, score in raw_results:
-        sm5 = doc.metadata.get("source_md5", "")
-        if sm5 not in groups or score > groups[sm5]["score"]:
-            groups[sm5] = {"doc": doc, "score": score, "source_md5": sm5}
+# 语义搜索筛选
+if search.strip():
+    coll = vs.get_preferences_collection() if collection_type == "preferences" else vs.get_cases_collection()
+    raw_results = coll.similarity_search_with_relevance_scores(search, k=len(docs) * 3 or 20)
+    matched_md5s = {doc.metadata.get("source_md5", "") for doc, score in raw_results if score >= 0.3}
+    docs = [d for d in docs if d["source_md5"] in matched_md5s]
 
-    st.caption(f"找到 {len(raw_results)} 个匹配片段，来自 {len(groups)} 个文件")
-    for sm5, g in groups.items():
-        doc = g["doc"]
-        meta = doc.metadata
-        label = meta.get("name", meta.get("title", meta.get("destination", "未命名")))
-        with st.expander(f"{label} - {meta.get('rating', 'N/A')}★ (相似度: {g['score']:.2f})"):
-            st.write(doc.page_content)
-            st.caption(f"标签: {meta.get('tags', [])} | source: {sm5[:8]}...")
-            if st.button("🗑️ 删除此文件的所有片段", key=f"del_{sm5}"):
-                deleted = vs.delete_by_source(sm5, collection_type)
-                st.success(f"已删除 {deleted} 个片段")
+if not docs:
+    st.info("暂无文档，去录入或上传一些数据吧！")
+else:
+    total_pages = max(1, (len(docs) + PAGE_SIZE - 1) // PAGE_SIZE)
+    if "kb_page" not in st.session_state:
+        st.session_state.kb_page = 0
+    page = st.session_state.kb_page
+    if page >= total_pages:
+        page = 0
+        st.session_state.kb_page = 0
+
+    start = page * PAGE_SIZE
+    page_docs = docs[start:start + PAGE_SIZE]
+
+    st.caption(f"共 {len(docs)} 个文档，第 {page+1}/{total_pages} 页")
+
+    for d in page_docs:
+        sm5 = d["source_md5"]
+        label = d["title"]
+        if d.get("category"):
+            label = f"[{d['category']}] {label}"
+        meta_line = f"⭐ {d['rating']} · {d['chunk_count']} chunks"
+        if d.get("tags"):
+            meta_line += f" · 标签: {', '.join(d['tags'])}"
+
+        with st.container(border=True):
+            cols = st.columns([5, 1])
+            with cols[0]:
+                st.markdown(f"**{label}**")
+                st.caption(meta_line)
+                with st.expander("🔍 预览"):
+                    coll = vs.get_preferences_collection() if collection_type == "preferences" else vs.get_cases_collection()
+                    first_chunk = coll.get(
+                        where={"source_md5": sm5}, limit=1
+                    )
+                    if first_chunk["documents"]:
+                        st.write(first_chunk["documents"][0][:500])
+            with cols[1]:
+                if st.button("🗑️ 删除", key=f"del_{sm5}", use_container_width=True):
+                    deleted = vs.delete_by_source(sm5, collection_type)
+                    st.success(f"已删除 {deleted} 个片段" + (" 及归档文件" if d.get("source_file") else ""))
+                    st.session_state.kb_page = 0
+                    st.rerun()
+
+    # 分页控件
+    if total_pages > 1:
+        cols = st.columns(5)
+        with cols[0]:
+            if st.button("⏮️ 首页", disabled=(page == 0)):
+                st.session_state.kb_page = 0
+                st.rerun()
+        with cols[1]:
+            if st.button("◀ 上一页", disabled=(page == 0)):
+                st.session_state.kb_page = page - 1
+                st.rerun()
+        with cols[2]:
+            st.caption(f"{page+1} / {total_pages}")
+        with cols[3]:
+            if st.button("下一页 ▶", disabled=(page >= total_pages - 1)):
+                st.session_state.kb_page = page + 1
+                st.rerun()
+        with cols[4]:
+            if st.button("末页 ⏭️", disabled=(page >= total_pages - 1)):
+                st.session_state.kb_page = total_pages - 1
                 st.rerun()

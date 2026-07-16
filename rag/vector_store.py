@@ -1,4 +1,5 @@
 import hashlib
+import os
 from chromadb import PersistentClient
 from chromadb.config import Settings as ChromaSettings
 from langchain_core.documents import Document
@@ -65,13 +66,40 @@ class VectorStoreManager:
         return store.add_documents(chunks)
 
     def delete_by_source(self, source_md5: str, collection_type: str) -> int:
-        """删除指定 source_md5 的所有 chunk（跨两个集合）。"""
+        """删除指定 source_md5 的所有 chunk，并清理磁盘上的归档文件。"""
         coll = self.get_preferences_collection() if collection_type == "preferences" else self.get_cases_collection()
         existing = coll.get()
-        ids_to_delete = [
-            id_ for id_, meta in zip(existing["ids"], existing["metadatas"])
-            if meta and meta.get("source_md5") == source_md5
-        ]
+        ids_to_delete = []
+        source_file = None
+        for id_, meta in zip(existing["ids"], existing["metadatas"]):
+            if meta and meta.get("source_md5") == source_md5:
+                ids_to_delete.append(id_)
+                source_file = source_file or meta.get("source_file", "")
         if ids_to_delete:
             coll.delete(ids=ids_to_delete)
+        if source_file and os.path.exists(source_file):
+            os.remove(source_file)
         return len(ids_to_delete)
+
+    def list_documents(self, collection_type: str) -> list[dict]:
+        """列出集合中的所有文档（按 source_md5 去重分组后返回摘要）。"""
+        coll = self.get_preferences_collection() if collection_type == "preferences" else self.get_cases_collection()
+        existing = coll.get()
+        groups: dict[str, dict] = {}
+        for meta in existing["metadatas"]:
+            if not meta:
+                continue
+            sm5 = meta.get("source_md5", "")
+            if sm5 not in groups:
+                groups[sm5] = {
+                    "source_md5": sm5,
+                    "chunk_count": 0,
+                    "title": meta.get("name") or meta.get("title") or meta.get("destination") or "未命名",
+                    "rating": meta.get("rating", "N/A"),
+                    "tags": meta.get("tags", []),
+                    "category": meta.get("category", ""),
+                    "source_file": meta.get("source_file", ""),
+                    "created_at": meta.get("created_at", ""),
+                }
+            groups[sm5]["chunk_count"] += 1
+        return sorted(groups.values(), key=lambda g: g["created_at"], reverse=True)
