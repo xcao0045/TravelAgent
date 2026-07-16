@@ -43,8 +43,10 @@ def _init_dependencies(settings: Settings):
     vector_store = VectorStoreManager(
         persist_dir=settings.chroma_persist_dir,
         embeddings=embeddings,
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
     )
-    _retriever = DualRetriever(vector_store)
+    _retriever = DualRetriever(vector_store, similarity_threshold=settings.similarity_threshold)
 
 
 def _get_llm():

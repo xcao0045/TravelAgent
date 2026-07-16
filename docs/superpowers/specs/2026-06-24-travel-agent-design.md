@@ -159,13 +159,32 @@ metadata = {
 # 文本内容: 完整旅行方案 Markdown → embedding
 ```
 
-### Embedding 策略
+### 文档切分策略
+
+入库时使用 `RecursiveCharacterTextSplitter` 切分文档：
+
+| 参数 | 值 |
+|------|------|
+| chunk_size | 500 |
+| chunk_overlap | 50 (10%) |
+| 分隔符 | `\n\n` → `\n` → `。` → `，` → ` ` → `` |
+
+### Embedding 与检索策略
 
 | 项 | 选择 |
 |----|------|
 | Embedding 模型 | 阿里百炼 `text-embedding-v3` (1024维) |
+| 检索方式 | 余弦相似度 + 阈值过滤 |
 | 检索 Top-K | 偏好库 K=5，案例库 K=3 |
-| 相似度阈值 | 0.7 |
+| 相似度阈值 | 0.7（低于此分数的结果被丢弃，实际返回数量可能小于 K） |
+
+### RAG 引用格式
+
+Agent 将 RAG 检索结果以编号标记注入 prompt：
+- `[RAG-P1]` ... `[RAG-P5]` — 偏好库来源
+- `[RAG-C1]` ... `[RAG-C3]` — 案例库来源
+
+LLM 生成的推荐中须引用这些编号，并在输出的 JSON 中包含 `sources` 字段列出实际引用的来源。
 
 ### 数据录入（两个库均支持手动 + 文件上传）
 

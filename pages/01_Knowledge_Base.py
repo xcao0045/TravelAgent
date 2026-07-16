@@ -17,7 +17,9 @@ settings = Settings.from_env()
 @st.cache_resource
 def get_vector_store():
     embeddings = create_embeddings(settings.bailian_api_key, settings.embedding_model)
-    return VectorStoreManager(settings.chroma_persist_dir, embeddings)
+    return VectorStoreManager(settings.chroma_persist_dir, embeddings,
+                              chunk_size=settings.chunk_size,
+                              chunk_overlap=settings.chunk_overlap)
 
 vs = get_vector_store()
 

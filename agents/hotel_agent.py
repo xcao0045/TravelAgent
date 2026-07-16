@@ -23,10 +23,13 @@ def hotel_agent_node(state: TravelPlanState) -> dict:
         k_cases=3,
     )
     prefs_context = "\n".join(
-        [f"{d.metadata.get('name','')}: {d.page_content[:300]} [标签: {d.metadata.get('tags',[])}]"
-         for d in rag_results["preferences"]]
+        [f"[RAG-P{i+1}] {d.metadata.get('name','')}: {d.page_content[:300]} [标签: {d.metadata.get('tags',[])}]"
+         for i, d in enumerate(rag_results["preferences"])]
     )
-    cases_context = "\n".join([d.page_content[:500] for d in rag_results["cases"]])
+    cases_context = "\n".join(
+        [f"[RAG-C{i+1}] {d.page_content[:400]}"
+         for i, d in enumerate(rag_results["cases"])]
+    )
 
     prompt = f"""你是酒店推荐专家。为{destination}筛选合适的酒店。
 
@@ -36,8 +39,9 @@ def hotel_agent_node(state: TravelPlanState) -> dict:
 历史优秀案例参考:
 {cases_context}
 
-请直接推荐酒店，输出JSON格式: {{"hotels": [...]}}
-每个推荐含: name, address, rating, price_range, reason(推荐理由，需引用偏好库标签), matched_tags
+请直接推荐酒店，输出JSON格式: {{"hotels": [...], "sources": [...]}}
+每个推荐含: name, address, rating, price_range, reason(请在理由中引用RAG来源编号如[RAG-P1]), matched_tags
+sources字段: 列出本次推荐实际引用的RAG来源编号列表，如 ["RAG-P1", "RAG-P3"]
 """
     response = llm.invoke(prompt)
 

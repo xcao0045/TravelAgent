@@ -24,10 +24,13 @@ def attraction_agent_node(state: TravelPlanState) -> dict:
         k_cases=3,
     )
     prefs_context = "\n".join(
-        [f"[{d.metadata.get('category','')}] {d.metadata.get('name','')}: {d.page_content[:300]}"
-         for d in rag_results["preferences"]]
+        [f"[RAG-P{i+1}] {d.metadata.get('category','')}·{d.metadata.get('name','')} [标签:{d.metadata.get('tags',[])}]: {d.page_content[:300]}"
+         for i, d in enumerate(rag_results["preferences"])]
     )
-    cases_context = "\n".join([d.page_content[:500] for d in rag_results["cases"]])
+    cases_context = "\n".join(
+        [f"[RAG-C{i+1}] {d.page_content[:400]}"
+         for i, d in enumerate(rag_results["cases"])]
+    )
 
     prompt = f"""你是旅游规划专家。为{destination}规划{days}天的景点和餐厅。
 
@@ -37,8 +40,9 @@ def attraction_agent_node(state: TravelPlanState) -> dict:
 历史优秀案例参考:
 {cases_context}
 
-请直接推荐景点和餐厅，输出JSON格式: {{"attractions": [...], "restaurants": [...]}}
-每个推荐含: name, address, rating, reason(推荐理由), tags
+请直接推荐景点和餐厅，输出JSON格式: {{"attractions": [...], "restaurants": [...], "sources": [...]}}
+每个推荐含: name, address, rating, reason(请在理由中引用RAG来源编号如[RAG-P1][RAG-C2]), tags
+sources字段: 列出本次推荐实际引用的RAG来源编号列表，如 ["RAG-P1", "RAG-C2", "RAG-P3"]
 """
     response = llm.invoke(prompt)
 

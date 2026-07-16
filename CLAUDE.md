@@ -32,7 +32,8 @@ Home.py  →  agents/graph.py  →  agents/{orchestrator, weather, attraction, h
 - **LangGraph 状态机**: 1 主控 → 3 并行子 Agent (Send API 扇出) → 1 汇总 → END
 - **共享状态**: `agents/state.py` — `TravelPlanState(TypedDict)`, 14 字段
 - **循环依赖解决**: `agents/graph.py` 提供 `_get_llm()`, `_get_tools()`, `_get_retriever()` 单例；子 Agent 在函数体内 lazy import
-- **RAG 双库**: `user_preferences` (偏好标签) + `travel_cases` (历史案例)，入库三级去重 (MD5 → 字段匹配 → 语义)
+- **RAG 双库**: `user_preferences` (偏好标签) + `travel_cases` (历史案例)，入库三级去重 (MD5 → 字段匹配 → 语义)，chunk_size=500 / overlap=10%，余弦相似度 + 阈值 0.7 过滤
+- **RAG 引用**: Agent prompt 中偏好库标记为 `[RAG-P1..N]`，案例库标记为 `[RAG-C1..N]`，LLM 输出须包含 `sources` 字段
 
 ## Key Conventions
 
