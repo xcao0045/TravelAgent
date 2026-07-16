@@ -199,9 +199,24 @@ search = st.text_input("搜索", placeholder="输入关键词...")
 
 if search:
     collection = vs.get_preferences_collection() if collection_type == "preferences" else vs.get_cases_collection()
-    results = collection.similarity_search(search, k=10)
-    for doc in results:
+    raw_results = collection.similarity_search_with_relevance_scores(search, k=20)
+
+    # 按 source_md5 分组，每组保留最高分 chunk
+    groups: dict[str, dict] = {}
+    for doc, score in raw_results:
+        sm5 = doc.metadata.get("source_md5", "")
+        if sm5 not in groups or score > groups[sm5]["score"]:
+            groups[sm5] = {"doc": doc, "score": score, "source_md5": sm5}
+
+    st.caption(f"找到 {len(raw_results)} 个匹配片段，来自 {len(groups)} 个文件")
+    for sm5, g in groups.items():
+        doc = g["doc"]
         meta = doc.metadata
-        with st.expander(f"{meta.get('name', meta.get('destination', '未命名'))} - {meta.get('rating', 'N/A')}★"):
+        label = meta.get("name", meta.get("title", meta.get("destination", "未命名")))
+        with st.expander(f"{label} - {meta.get('rating', 'N/A')}★ (相似度: {g['score']:.2f})"):
             st.write(doc.page_content)
-            st.caption(f"标签: {meta.get('tags', [])}")
+            st.caption(f"标签: {meta.get('tags', [])} | source: {sm5[:8]}...")
+            if st.button("🗑️ 删除此文件的所有片段", key=f"del_{sm5}"):
+                deleted = vs.delete_by_source(sm5, collection_type)
+                st.success(f"已删除 {deleted} 个片段")
+                st.rerun()

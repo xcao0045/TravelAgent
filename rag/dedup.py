@@ -8,9 +8,13 @@ def md5_hash(text: str) -> str:
     return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
-def check_md5_duplicate(text: str, existing_texts: list[str]) -> bool:
-    """检查文本MD5是否已存在于库中"""
+def check_md5_duplicate(text: str, existing_texts: list[str],
+                        existing_metas: list[dict] | None = None) -> bool:
+    """检查文本MD5是否已存在于库中。优先比对 source_md5（跨 chunk 的原文哈希）。"""
     h = md5_hash(text)
+    if existing_metas:
+        if any(m.get("source_md5") == h for m in existing_metas if m):
+            return True
     return any(md5_hash(t) == h for t in existing_texts)
 
 
@@ -76,9 +80,9 @@ def dedup_pipeline(
     """
     text = doc.page_content
 
-    # 第1关：MD5
+    # 第1关：MD5（优先比对 source_md5 元数据，兼容 chunk 切分后的去重）
     if options.get("md5", True):
-        if check_md5_duplicate(text, existing_texts):
+        if check_md5_duplicate(text, existing_texts, existing_metas):
             return {"status": "duplicate", "duplicates": [], "reason": "MD5精确匹配"}
 
     # 第2关：字段匹配
