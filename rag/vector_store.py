@@ -34,12 +34,20 @@ class VectorStoreManager:
             client=self._client,
         )
 
+    @staticmethod
+    def _sanitize_metadata(docs: list[Document]) -> list[Document]:
+        """剔除元数据中值为空列表的字段，避免 ChromaDB 拒绝入库。"""
+        for doc in docs:
+            doc.metadata = {k: v for k, v in doc.metadata.items()
+                            if not (isinstance(v, list) and len(v) == 0)}
+        return docs
+
     def add_to_preferences(self, docs: list[Document]) -> list[str]:
         store = self.get_preferences_collection()
-        chunks = self._splitter.split_documents(docs)
+        chunks = self._splitter.split_documents(self._sanitize_metadata(docs))
         return store.add_documents(chunks)
 
     def add_to_cases(self, docs: list[Document]) -> list[str]:
         store = self.get_cases_collection()
-        chunks = self._splitter.split_documents(docs)
+        chunks = self._splitter.split_documents(self._sanitize_metadata(docs))
         return store.add_documents(chunks)
