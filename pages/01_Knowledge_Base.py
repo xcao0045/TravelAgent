@@ -123,6 +123,10 @@ with tab2:
 
     uploaded_file = st.file_uploader("选择文件", type=allowed_types)
     if uploaded_file:
+        file_key = f"{uploaded_file.name}_{uploaded_file.size}"
+        if st.session_state.get("_kb_last_upload") == file_key:
+            st.stop()
+
         # Save original to local archive
         archive_dir = os.path.join("data", "knowledge_base", collection_type)
         os.makedirs(archive_dir, exist_ok=True)
@@ -175,6 +179,7 @@ with tab2:
                 st.warning(f"⚠️ {dup_count}条跳过(重复), {len(new_docs)}条新增")
             else:
                 st.success(f"✅ 成功导入 {len(new_docs)} 条数据")
+            st.session_state["_kb_last_upload"] = file_key
         except Exception as e:
             st.error(f"导入失败: {e}")
         finally:
@@ -227,11 +232,12 @@ else:
                 st.caption(meta_line)
                 with st.expander("🔍 预览"):
                     coll = vs.get_preferences_collection() if collection_type == "preferences" else vs.get_cases_collection()
-                    first_chunk = coll.get(
-                        where={"source_md5": sm5}, limit=1
+                    chunks = coll.get(
+                        where={"source_md5": sm5}, limit=2
                     )
-                    if first_chunk["documents"]:
-                        st.write(first_chunk["documents"][0][:500])
+                    if chunks["documents"]:
+                        preview = "\n\n".join(chunks["documents"])
+                        st.write(preview[:1000])
             with cols[1]:
                 if st.button("🗑️ 删除", key=f"del_{sm5}", use_container_width=True):
                     deleted = vs.delete_by_source(sm5, collection_type)
