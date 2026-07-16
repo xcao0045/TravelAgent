@@ -12,6 +12,7 @@ __pycache__/
 # Runtime data — contains local user data, never commit
 storage/
 data/history/*.json
+data/knowledge_base/
 
 # IDE
 .vscode/

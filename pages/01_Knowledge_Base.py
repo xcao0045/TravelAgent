@@ -136,7 +136,14 @@ with tab2:
 
     uploaded_file = st.file_uploader("选择文件", type=["csv", "json", "md", "txt"])
     if uploaded_file:
-        # Save to temp
+        # Save original to local archive
+        archive_dir = os.path.join("data", "knowledge_base", collection_type)
+        os.makedirs(archive_dir, exist_ok=True)
+        archive_path = os.path.join(archive_dir, uploaded_file.name)
+        with open(archive_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+        # Save to temp for processing
         tmp_path = os.path.join(tempfile.gettempdir(), uploaded_file.name)
         with open(tmp_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
