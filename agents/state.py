@@ -1,4 +1,9 @@
-from typing import TypedDict
+from typing import TypedDict, Annotated
+
+
+def _merge_dict(left: dict, right: dict) -> dict:
+    """LangGraph reducer：并行分支写入 dict 字段时合并而非覆盖。"""
+    return {**left, **right}
 
 
 class TravelPlanState(TypedDict):
@@ -18,7 +23,7 @@ class TravelPlanState(TypedDict):
 
     # === 汇总输出 ===
     final_report: str
-    rag_refs: dict       # {source_id: text} RAG 引用源文本，供前端 popover 渲染
+    rag_refs: Annotated[dict, _merge_dict]  # 多 Agent 并行写入，reducer 合并
     error_log: list[str]
 
     # === 微调对话 ===
