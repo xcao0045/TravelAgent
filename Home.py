@@ -134,6 +134,8 @@ if thread and thread.get("final_report"):
                 st.caption(f"**{rid}**")
                 st.markdown(text[:300])
                 st.divider()
+    else:
+        st.caption("💡 当前知识库未匹配到相关内容")
 
     col_actions = st.columns(4)
     with col_actions[0]:

@@ -15,7 +15,7 @@ class Settings:
     history_dir: str = "./data/history"
     top_k_preferences: int = 5
     top_k_cases: int = 3
-    similarity_threshold: float = 0.7
+    similarity_threshold: float = 0.45
     chunk_size: int = 500
     chunk_overlap: int = 50
 
@@ -30,7 +30,7 @@ class Settings:
             history_dir=os.getenv("HISTORY_DIR", "./data/history"),
             top_k_preferences=int(os.getenv("TOP_K_PREFERENCES", "5")),
             top_k_cases=int(os.getenv("TOP_K_CASES", "3")),
-            similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.7")),
+            similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.45")),
             chunk_size=int(os.getenv("CHUNK_SIZE", "500")),
             chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
         )

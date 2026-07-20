@@ -32,7 +32,7 @@ def test_settings_from_env_reads_all_fields():
     assert settings.embedding_model == "text-embedding-v3"
     assert settings.top_k_preferences == 5
     assert settings.top_k_cases == 3
-    assert settings.similarity_threshold == 0.7
+    assert settings.similarity_threshold == 0.45
 
 
 def test_settings_uses_defaults_when_env_missing():
@@ -44,4 +44,4 @@ def test_settings_uses_defaults_when_env_missing():
     assert settings.llm_model == "qwen-max"
     assert settings.top_k_preferences == 5
     assert settings.top_k_cases == 3
-    assert settings.similarity_threshold == 0.7
+    assert settings.similarity_threshold == 0.45
