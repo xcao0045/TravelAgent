@@ -121,12 +121,19 @@ with tab2:
         allowed_types = ["json", "md", "txt", "csv"]
         st.info("支持格式: JSON, Markdown, TXT, CSV")
 
-    if "_kb_upload_key" not in st.session_state:
-        st.session_state._kb_upload_key = 0
+    if "uploader_key" not in st.session_state:
+        st.session_state.uploader_key = 0
+    if "upload_message" not in st.session_state:
+        st.session_state.upload_message = None
+
+    # 持久化上传反馈（跨越 rerun 后仍可见）
+    if st.session_state.upload_message:
+        level, text = st.session_state.upload_message
+        getattr(st, level)(text)
 
     uploaded_file = st.file_uploader(
         "选择文件", type=allowed_types,
-        key=f"kb_uploader_{st.session_state._kb_upload_key}",
+        key=f"kb_uploader_{st.session_state.uploader_key}",
     )
     if uploaded_file:
         # Save original to local archive
@@ -178,14 +185,14 @@ with tab2:
                     vs.add_to_cases(new_docs)
 
             if dup_count > 0:
-                st.warning(f"⚠️ {dup_count}条跳过(重复), {len(new_docs)}条新增")
+                st.session_state.upload_message = ("warning", f"⚠️ {dup_count}条跳过(重复), {len(new_docs)}条新增")
             else:
-                st.success(f"✅ 成功导入 {len(new_docs)} 条数据")
+                st.session_state.upload_message = ("success", f"✅ 成功导入 {len(new_docs)} 条数据")
         except Exception as e:
-            st.error(f"导入失败: {e}")
+            st.session_state.upload_message = ("error", f"导入失败: {e}")
         finally:
             os.unlink(tmp_path)
-            st.session_state._kb_upload_key += 1
+            st.session_state.uploader_key += 1
             st.rerun()
 
 st.divider()

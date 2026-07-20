@@ -20,10 +20,15 @@ def weather_agent_node(state: TravelPlanState) -> dict:
     case_docs = retriever.retrieve_cases(
         f"{destination} {travel_date} 天气 出行准备", k=3
     )
-    case_context = "\n".join(
-        [f"[RAG-C{i+1}] 目的地:{d.metadata.get('destination','?')} 天数:{d.metadata.get('days','?')}天\n{d.page_content[:400]}"
-         for i, d in enumerate(case_docs)]
-    )
+    case_rag = {}
+    case_lines = []
+    for i, d in enumerate(case_docs):
+        rid = f"[RAG-C{i+1}]"
+        case_rag[rid] = d.page_content[:400]
+        case_lines.append(
+            f"{rid} 目的地:{d.metadata.get('destination','?')} 天数:{d.metadata.get('days','?')}天\n{d.page_content[:400]}"
+        )
+    case_context = "\n".join(case_lines)
 
     prompt = f"""你是天气查询专家。请根据你的知识，为{destination}在{travel_date}前后的天气情况给出预测和建议。
 
@@ -37,4 +42,4 @@ def weather_agent_node(state: TravelPlanState) -> dict:
 3. 对行程的影响提示
 """
     response = llm.invoke(prompt)
-    return {"weather_report": response.content}
+    return {"weather_report": response.content, "rag_refs": case_rag}

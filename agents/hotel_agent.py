@@ -22,14 +22,20 @@ def hotel_agent_node(state: TravelPlanState) -> dict:
         k_prefs=5,
         k_cases=3,
     )
-    prefs_context = "\n".join(
-        [f"[RAG-P{i+1}] {d.metadata.get('name','')}: {d.page_content[:300]} [标签: {d.metadata.get('tags',[])}]"
-         for i, d in enumerate(rag_results["preferences"])]
-    )
-    cases_context = "\n".join(
-        [f"[RAG-C{i+1}] {d.page_content[:400]}"
-         for i, d in enumerate(rag_results["cases"])]
-    )
+    rag = {}
+    prefs_lines = []
+    for i, d in enumerate(rag_results["preferences"]):
+        rid = f"[RAG-P{i+1}]"
+        rag[rid] = d.page_content[:300]
+        prefs_lines.append(f"{rid} {d.metadata.get('name','')}: {d.page_content[:300]} [标签: {d.metadata.get('tags',[])}]")
+    cases_lines = []
+    for i, d in enumerate(rag_results["cases"]):
+        rid = f"[RAG-C{i+1}]"
+        rag[rid] = d.page_content[:400]
+        cases_lines.append(f"{rid} {d.page_content[:400]}")
+
+    prefs_context = "\n".join(prefs_lines)
+    cases_context = "\n".join(cases_lines)
 
     prompt = f"""你是酒店推荐专家。为{destination}筛选合适的酒店。
 
@@ -53,4 +59,4 @@ sources字段: 列出本次推荐实际引用的RAG来源编号列表，如 ["RA
     except json.JSONDecodeError:
         data = {}
 
-    return {"hotels": data.get("hotels", [])}
+    return {"hotels": data.get("hotels", []), "rag_refs": rag}

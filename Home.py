@@ -15,12 +15,38 @@ st.set_page_config(
 # --- 初始化 ---
 settings = Settings.from_env()
 
-if "plan_state" not in st.session_state:
-    st.session_state.plan_state = None
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-if "final_report" not in st.session_state:
-    st.session_state.final_report = ""
+# 线程模型：每个旅行方案是一个 thread，含 meta / messages / final_report / rag_refs
+if "history" not in st.session_state:
+    st.session_state.history = {}         # {thread_id: {...}}
+if "active_thread_id" not in st.session_state:
+    st.session_state.active_thread_id = None
+if "is_processing" not in st.session_state:
+    st.session_state.is_processing = False
+
+
+def _get_thread():
+    """返回当前活跃线程的引用，若无则返回 None。"""
+    tid = st.session_state.active_thread_id
+    if tid and tid in st.session_state.history:
+        return st.session_state.history[tid]
+    return None
+
+
+def _new_thread(meta: dict) -> str:
+    """创建新线程，返回 thread_id。"""
+    import uuid
+    tid = uuid.uuid4().hex[:12]
+    st.session_state.history[tid] = {
+        "thread_id": tid,
+        "meta": meta,
+        "messages": [],
+        "final_report": "",
+        "rag_refs": {},          # {source_id: text} 用于 popover 渲染
+        "status": "draft",
+        "created_at": datetime.now().isoformat(),
+    }
+    st.session_state.active_thread_id = tid
+    return tid
 
 st.title("🧭 Multi-Agent 智能旅行规划")
 st.caption("输入需求，AI自动生成覆盖天气、景点、酒店、餐饮、交通、预算的完整旅行方案")
@@ -42,26 +68,26 @@ with col4:
 
 preferences = st.text_area("偏好", placeholder="如：亲子、安静、美食、适合老人")
 
-plan_clicked = st.button("🚀 开始规划", type="primary", use_container_width=True)
+plan_clicked = st.button(
+    "🚀 开始规划", type="primary", use_container_width=True,
+    disabled=st.session_state.is_processing,
+)
 
 # === 第2步：AI执行过程 ===
 if plan_clicked:
     st.header("第2步：AI 执行过程")
-    progress_container = st.container()
 
-    with progress_container:
-        status_placeholder = st.empty()
-
-        if not settings.bailian_api_key or not settings.amap_api_key:
-            st.error("""
-            ⚠️ 请先在项目根目录创建 `.env` 文件，配置 API Key：
-            ```
-            BAILIAN_API_KEY=your_bailian_api_key_here
-            AMAP_API_KEY=your_amap_api_key_here
-            ```
-            """)
-        else:
-            status_placeholder.info("🔄 主控Agent 解析需求...")
+    if not settings.bailian_api_key or not settings.amap_api_key:
+        st.error("""
+        ⚠️ 请先在项目根目录创建 `.env` 文件，配置 API Key：
+        ```
+        BAILIAN_API_KEY=your_bailian_api_key_here
+        AMAP_API_KEY=your_amap_api_key_here
+        ```
+        """)
+    else:
+        st.session_state.is_processing = True
+        with st.spinner("🔄 Agent 协作中，请稍候..."):
             try:
                 user_input = {
                     "destination": destination,
@@ -72,56 +98,82 @@ if plan_clicked:
                 }
 
                 result = run_travel_plan(user_input, settings)
-                st.session_state.plan_state = result
-                st.session_state.final_report = result.get("final_report", "")
-                st.session_state.chat_history = []
 
-                status_placeholder.success("✅ 方案生成完成！")
+                # 创建新线程
+                tid = _new_thread(meta={
+                    "destination": destination,
+                    "travel_date": str(travel_date),
+                    "days": days,
+                    "preferences": preferences,
+                    "budget": [budget_min, budget_max],
+                })
+                thread = _get_thread()
+                thread["final_report"] = result.get("final_report", "")
+                thread["initial_report"] = result.get("final_report", "")
+                # 收集 RAG 引用源文本
+                thread["rag_refs"] = result.get("rag_refs", {})
+
+                st.success("✅ 方案生成完成！")
             except Exception as e:
-                status_placeholder.error(f"❌ 生成失败: {str(e)}")
-                st.stop()
+                st.error(f"❌ 生成失败: {str(e)}")
+            finally:
+                st.session_state.is_processing = False
 
 # === 第3步：展示方案 ===
-if st.session_state.final_report:
+thread = _get_thread()
+if thread and thread.get("final_report"):
+    report = thread["final_report"]
     st.header("第3步：旅行方案")
-    st.markdown(st.session_state.final_report)
+    st.markdown(report)
 
     col_actions = st.columns(4)
     with col_actions[0]:
         st.download_button(
             "📥 下载 Markdown",
-            data=st.session_state.final_report,
+            data=report,
             file_name=f"{destination}_{days}天_旅行方案.md",
             mime="text/markdown",
         )
     with col_actions[1], st.expander("📋 查看 Markdown 源码"):
-        st.code(st.session_state.final_report, language="markdown")
+        st.text_area(
+            "Markdown 源码", report,
+            height=400, disabled=True, label_visibility="collapsed",
+        )
 
     # === 第4步：微调对话 ===
     st.header("第4步：微调优化")
     st.caption("对方案有修改意见？在这里和AI对话调整")
 
     # 显示对话历史
-    for msg in st.session_state.chat_history:
+    for msg in thread.get("messages", []):
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
+            # Issue 4: RAG 引用 popover
+            if msg.get("sources"):
+                with st.popover("📖 引用来源"):
+                    for src in msg["sources"]:
+                        st.caption(f"**{src['label']}**")
+                        st.markdown(src["text"][:300])
 
     # 用户输入
-    user_feedback = st.chat_input("输入修改意见...")
+    user_feedback = st.chat_input(
+        "输入修改意见...",
+        disabled=st.session_state.is_processing,
+    )
     if user_feedback:
-        st.session_state.chat_history.append({"role": "user", "content": user_feedback})
+        thread["messages"].append({"role": "user", "content": user_feedback})
+        st.session_state.is_processing = True
 
-        # 再次调用LLM处理修改
-        from agents.graph import _get_llm
-        llm = _get_llm()
+        with st.spinner("🔄 AI 正在优化方案..."):
+            from agents.graph import _get_llm
+            llm = _get_llm()
 
-        current_report = st.session_state.final_report
-        history_str = "\n".join(
-            [f"{m['role']}: {m['content']}" for m in st.session_state.chat_history[-10:]]
-        )
+            history_str = "\n".join(
+                [f"{m['role']}: {m['content']}" for m in thread["messages"][-10:]]
+            )
 
-        refine_prompt = f"""以下是当前的旅行方案:
-{current_report}
+            refine_prompt = f"""以下是当前的旅行方案:
+{report}
 
 用户提出了新的修改意见。请根据修改意见更新方案，只修改用户要求的部分，其他保持不变。
 
@@ -129,34 +181,28 @@ if st.session_state.final_report:
 {history_str}
 
 请输出更新后的完整Markdown方案。"""
-        response = llm.invoke(refine_prompt)
-        st.session_state.final_report = response.content
-        st.session_state.chat_history.append(
-            {"role": "assistant", "content": response.content}
-        )
+            response = llm.invoke(refine_prompt)
+            thread["final_report"] = response.content
+
+            # 收集回复中的 RAG 引用供 popover 渲染
+            rl = thread.get("rag_refs", {})
+            cited = [{"label": rid, "text": rl[rid]} for rid in rl if rid in response.content]
+            thread["messages"].append({
+                "role": "assistant",
+                "content": response.content,
+                "sources": cited,
+            })
+
+        st.session_state.is_processing = False
         st.rerun()
 
     # 确认按钮
     if st.button("✅ 确认最终方案，保存到历史", type="primary"):
-        session_data = {
-            "session_id": datetime.now().strftime("%Y%m%d_%H%M%S"),
-            "created_at": datetime.now().isoformat(),
-            "status": "confirmed",
-            "input": {
-                "destination": destination,
-                "travel_date": str(travel_date),
-                "days": days,
-                "preferences": preferences,
-                "budget": [budget_min, budget_max],
-            },
-            "initial_report": st.session_state.plan_state.get("final_report", ""),
-            "conversation": st.session_state.chat_history,
-            "final_report": st.session_state.final_report,
-        }
+        thread["status"] = "confirmed"
         os.makedirs(settings.history_dir, exist_ok=True)
-        filename = f"{session_data['session_id']}_{destination}_{days}天.json"
+        filename = f"{thread['thread_id']}_{destination}_{days}天.json"
         filepath = os.path.join(settings.history_dir, filename)
         with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(session_data, f, ensure_ascii=False, indent=2)
+            json.dump(thread, f, ensure_ascii=False, indent=2)
         st.success("✅ 方案已保存到历史记录！")
         st.balloons()

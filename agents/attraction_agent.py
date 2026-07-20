@@ -23,14 +23,20 @@ def attraction_agent_node(state: TravelPlanState) -> dict:
         k_prefs=5,
         k_cases=3,
     )
-    prefs_context = "\n".join(
-        [f"[RAG-P{i+1}] {d.metadata.get('category','')}·{d.metadata.get('name','')} [标签:{d.metadata.get('tags',[])}]: {d.page_content[:300]}"
-         for i, d in enumerate(rag_results["preferences"])]
-    )
-    cases_context = "\n".join(
-        [f"[RAG-C{i+1}] {d.page_content[:400]}"
-         for i, d in enumerate(rag_results["cases"])]
-    )
+    rag = {}
+    prefs_lines = []
+    for i, d in enumerate(rag_results["preferences"]):
+        rid = f"[RAG-P{i+1}]"
+        rag[rid] = d.page_content[:300]
+        prefs_lines.append(f"{rid} {d.metadata.get('category','')}·{d.metadata.get('name','')} [标签:{d.metadata.get('tags',[])}]: {d.page_content[:300]}")
+    cases_lines = []
+    for i, d in enumerate(rag_results["cases"]):
+        rid = f"[RAG-C{i+1}]"
+        rag[rid] = d.page_content[:400]
+        cases_lines.append(f"{rid} {d.page_content[:400]}")
+
+    prefs_context = "\n".join(prefs_lines)
+    cases_context = "\n".join(cases_lines)
 
     prompt = f"""你是旅游规划专家。为{destination}规划{days}天的景点和餐厅。
 
@@ -58,4 +64,5 @@ sources字段: 列出本次推荐实际引用的RAG来源编号列表，如 ["RA
     return {
         "attractions": data.get("attractions", []),
         "restaurants": data.get("restaurants", []),
+        "rag_refs": rag,
     }

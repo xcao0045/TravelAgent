@@ -111,6 +111,7 @@ def run_travel_plan(user_input: dict, settings: Settings) -> TravelPlanState:
         hotels=[],
         routes=[],
         final_report="",
+        rag_refs={},
         error_log=[],
         conversation=[],
         is_finalized=False,

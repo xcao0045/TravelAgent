@@ -3,7 +3,7 @@ import json
 import os
 from config import Settings
 
-st.set_page_config(page_title="历史记录", page_icon="📋")
+st.set_page_config(page_title="历史记录", page_icon="📋", layout="wide")
 
 settings = Settings.from_env()
 
@@ -34,13 +34,16 @@ for filename in files:
             st.warning(f"⚠️ 跳过损坏文件: {filename}")
             continue
 
-    destination = session.get("input", {}).get("destination", "未知")
+    # 兼容旧格式 (input 字段) 和新格式 (meta 字段)
+    meta = session.get("meta", session.get("input", {}))
+    destination = meta.get("destination", "未知")
     if search_term and search_term not in destination:
         continue
 
-    days = session.get("input", {}).get("days", "?")
-    budget = session.get("input", {}).get("budget", [0, 0])
-    conv_count = len(session.get("conversation", []))
+    days = meta.get("days", "?")
+    budget = meta.get("budget", [0, 0])
+    messages = session.get("messages", session.get("conversation", []))
+    conv_count = len(messages)
     status = "✅已确认" if session.get("status") == "confirmed" else "⚠️未确认"
 
     with st.expander(
@@ -59,12 +62,18 @@ for filename in files:
                 )
 
         with tabs[1]:
-            for msg in session.get("conversation", []):
+            for msg in messages:
                 role = "🙋" if msg["role"] == "user" else "🤖"
                 st.caption(f"{role} {msg.get('timestamp', '')}")
                 st.write(msg["content"][:500])
+                # RAG 引用 popover
+                if msg.get("sources"):
+                    with st.popover("📖 引用来源"):
+                        for src in msg["sources"]:
+                            st.caption(f"**{src['label']}**")
+                            st.markdown(src["text"][:300])
                 st.divider()
-            if not session.get("conversation"):
+            if not messages:
                 st.caption("(无对话记录)")
 
         with tabs[2]:

@@ -18,6 +18,7 @@ class TravelPlanState(TypedDict):
 
     # === 汇总输出 ===
     final_report: str
+    rag_refs: dict       # {source_id: text} RAG 引用源文本，供前端 popover 渲染
     error_log: list[str]
 
     # === 微调对话 ===
