@@ -126,6 +126,15 @@ if thread and thread.get("final_report"):
     st.header("第3步：旅行方案")
     st.markdown(report)
 
+    # RAG 引用：初始报告下方展示所有检索到的源文本（规避缺陷 A — 初始报告不走 messages 渲染）
+    rag = thread.get("rag_refs", {})
+    if rag:
+        with st.expander(f"📖 RAG 引用来源（{len(rag)} 条）"):
+            for rid, text in rag.items():
+                st.caption(f"**{rid}**")
+                st.markdown(text[:300])
+                st.divider()
+
     col_actions = st.columns(4)
     with col_actions[0]:
         st.download_button(
@@ -134,10 +143,12 @@ if thread and thread.get("final_report"):
             file_name=f"{destination}_{days}天_旅行方案.md",
             mime="text/markdown",
         )
-    with col_actions[1], st.expander("📋 查看 Markdown 源码"):
+
+    # 源码查看器放到按钮行下方全宽（规避 Issue 2 — 列内狭窄 + disabled 禁止光标）
+    with st.expander("📋 查看 Markdown 源码"):
         st.text_area(
             "Markdown 源码", report,
-            height=400, disabled=True, label_visibility="collapsed",
+            height=400, label_visibility="collapsed",
         )
 
     # === 第4步：微调对话 ===
@@ -148,7 +159,6 @@ if thread and thread.get("final_report"):
     for msg in thread.get("messages", []):
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
-            # Issue 4: RAG 引用 popover
             if msg.get("sources"):
                 with st.popover("📖 引用来源"):
                     for src in msg["sources"]:
@@ -184,13 +194,12 @@ if thread and thread.get("final_report"):
             response = llm.invoke(refine_prompt)
             thread["final_report"] = response.content
 
-            # 收集回复中的 RAG 引用供 popover 渲染
-            rl = thread.get("rag_refs", {})
-            cited = [{"label": rid, "text": rl[rid]} for rid in rl if rid in response.content]
+            # 对话消息的 RAG 引用：全量携带 rag_refs，不依赖 LLM 输出格式（规避缺陷 B）
             thread["messages"].append({
                 "role": "assistant",
                 "content": response.content,
-                "sources": cited,
+                "sources": [{"label": rid, "text": text}
+                            for rid, text in thread.get("rag_refs", {}).items()],
             })
 
         st.session_state.is_processing = False
