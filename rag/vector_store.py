@@ -6,6 +6,7 @@ from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from rag.parent_store import ParentDocStore
+from rag.bm25_index import BM25IndexManager
 
 
 _SEMANTIC_SEPARATORS = ["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""]
@@ -43,6 +44,9 @@ class VectorStoreManager:
         self.parent_store = ParentDocStore(
             filepath=os.path.join(persist_dir, "parent_store.json"),
         )
+        # BM25 倒排索引（建立在 Child Chunk 上，用于双路混合检索）
+        self.bm25_index = BM25IndexManager(persist_dir=persist_dir)
+        self.bm25_index.restore()
 
     # ── 集合访问 ───────────────────────────────────────────
 
@@ -91,6 +95,12 @@ class VectorStoreManager:
         ids = store.add_documents(all_children)
         self.parent_store.put_batch(parent_entries)
         self.parent_store.persist()
+        # 同步 BM25 索引
+        self.bm25_index.add_chunks(
+            "preferences",
+            [(cid, doc.page_content) for cid, doc in zip(ids, all_children)],
+        )
+        self.bm25_index.persist()
         return ids
 
     def add_to_cases(self, docs: list[Document]) -> list[str]:
@@ -101,6 +111,12 @@ class VectorStoreManager:
         ids = store.add_documents(all_children)
         self.parent_store.put_batch(parent_entries)
         self.parent_store.persist()
+        # 同步 BM25 索引
+        self.bm25_index.add_chunks(
+            "cases",
+            [(cid, doc.page_content) for cid, doc in zip(ids, all_children)],
+        )
+        self.bm25_index.persist()
         return ids
 
     def _chunk_docs(
@@ -159,6 +175,10 @@ class VectorStoreManager:
         # 同步删除 parent_store
         self.parent_store.delete_by_source_md5(source_md5)
         self.parent_store.persist()
+        # 同步删除 BM25 索引
+        if ids_to_delete:
+            self.bm25_index.remove_by_ids(collection_type, ids_to_delete)
+            self.bm25_index.persist()
         return len(ids_to_delete)
 
     # ── 文档列表 ────────────────────────────────────────────

@@ -48,7 +48,12 @@ def _init_dependencies(settings: Settings):
         parent_chunk_size=settings.parent_chunk_size,
         parent_chunk_overlap=settings.parent_chunk_overlap,
     )
-    _retriever = DualRetriever(vector_store, similarity_threshold=settings.similarity_threshold)
+    _retriever = DualRetriever(
+        vector_store,
+        similarity_threshold=settings.similarity_threshold,
+        search_type=settings.search_type,
+        rrf_k=settings.rrf_k,
+    )
 
 
 def _get_llm():
