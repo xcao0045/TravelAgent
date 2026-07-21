@@ -1,6 +1,7 @@
 from langgraph.graph import StateGraph, END
 from langgraph.types import Send
 from langchain_community.chat_models.tongyi import ChatTongyi
+from langchain_core.messages import SystemMessage, ToolMessage, AIMessage
 from agents.state import TravelPlanState
 from agents.orchestrator import orchestrator_node
 from agents.weather_agent import weather_agent_node
@@ -66,6 +67,40 @@ def _get_tools():
 
 def _get_retriever():
     return _retriever
+
+
+# ── Tool Calling 公共辅助 ─────────────────────────────────────
+
+def _tool_by_name(tools: list, name: str):
+    """按名称查找 tool。"""
+    for t in tools:
+        if t.name == name:
+            return t
+    return None
+
+
+def _execute_tool_calls(response, available_tools: list) -> list[ToolMessage]:
+    """执行 LLM 返回的 tool_calls，返回 ToolMessage 列表。
+
+    每个 Tool 只调用一次。若 tool 不存在或执行异常，以 ToolMessage 包装错误信息。
+    """
+    messages = []
+    for tc in response.tool_calls:
+        tool_name = tc.get("name", "")
+        tool_args = tc.get("args", {})
+        tool = _tool_by_name(available_tools, tool_name)
+        if tool is None:
+            messages.append(ToolMessage(
+                content=f"❌ 未知工具: {tool_name}",
+                tool_call_id=tc["id"],
+            ))
+            continue
+        try:
+            result = tool.invoke(tool_args)
+        except Exception as e:
+            result = f"❌ 工具执行异常: {e}"
+        messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
+    return messages
 
 
 def _continue_to_sub_agents(state: TravelPlanState):

@@ -23,29 +23,29 @@ def test_weather_agent_returns_report():
         is_finalized=False,
     )
 
-    # Build mock graph module (agents.graph does not exist yet — Task 10)
     mock_graph = MagicMock()
-    mock_llm_response = Mock(content="成都7月15日天气：晴，28°C，适宜出行")
+    mock_llm_response = Mock(content="成都7月15日天气：晴，28°C，适宜出行",
+                             tool_calls=None)
+    mock_llm_with_tools = Mock()
+    mock_llm_with_tools.invoke.return_value = mock_llm_response
     mock_llm = Mock()
-    mock_llm.invoke.return_value = mock_llm_response
+    mock_llm.bind_tools.return_value = mock_llm_with_tools
     mock_tools = [Mock(name="amap_weather")]
     mock_retriever = Mock()
     mock_retriever.retrieve_cases.return_value = []
     mock_graph._get_llm = Mock(return_value=mock_llm)
     mock_graph._get_tools = Mock(return_value=mock_tools)
     mock_graph._get_retriever = Mock(return_value=mock_retriever)
+    mock_graph._execute_tool_calls = Mock(return_value=[])
 
-    # Inject into sys.modules so the lazy from agents.graph import ... works
     sys.modules["agents.graph"] = mock_graph
 
     try:
         result = weather_agent_node(state)
-
         assert "weather_report" in result
         assert isinstance(result["weather_report"], str)
         assert len(result["weather_report"]) > 0
     finally:
-        # Clean up to avoid cross-test pollution
         sys.modules.pop("agents.graph", None)
 
 
@@ -76,9 +76,11 @@ def _inject_mock_graph(llm_response_content: str, tools: list | None = None,
                        retrieve_both_return: dict | None = None):
     """Inject a mock agents.graph module into sys.modules and return the mocks."""
     mock_graph = MagicMock()
-    mock_llm_response = Mock(content=llm_response_content)
+    mock_llm_response = Mock(content=llm_response_content, tool_calls=None)
+    mock_llm_with_tools = Mock()
+    mock_llm_with_tools.invoke.return_value = mock_llm_response
     mock_llm = Mock()
-    mock_llm.invoke.return_value = mock_llm_response
+    mock_llm.bind_tools.return_value = mock_llm_with_tools
     mock_tools = tools or [Mock(name="amap_weather")]
     mock_retriever = Mock()
     if retrieve_cases_return is not None:
@@ -88,6 +90,7 @@ def _inject_mock_graph(llm_response_content: str, tools: list | None = None,
     mock_graph._get_llm = Mock(return_value=mock_llm)
     mock_graph._get_tools = Mock(return_value=mock_tools)
     mock_graph._get_retriever = Mock(return_value=mock_retriever)
+    mock_graph._execute_tool_calls = Mock(return_value=[])
     sys.modules["agents.graph"] = mock_graph
     return mock_graph
 

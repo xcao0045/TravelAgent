@@ -1,15 +1,59 @@
+"""高德地图 LangChain Tool — 含 Pydantic Input Schema + 统一错误处理。"""
 from langchain.tools import tool
+from pydantic import BaseModel, Field
 from tools.amap_client import AmapClient
 
 
+# ── Input Schemas ────────────────────────────────────────────
+
+class WeatherInput(BaseModel):
+    city: str = Field(description="城市名称，如'成都'、'苏州'")
+
+
+class POISearchInput(BaseModel):
+    city: str = Field(description="城市名称，如'成都'")
+    keyword: str = Field(description="搜索关键词，如'亲子景点'、'希尔顿酒店'")
+    category: str = Field(
+        default="",
+        description="POI类别: hotel(酒店)/restaurant(餐厅)/attraction(景点)，留空则搜索全部",
+    )
+
+
+class RoutePlanInput(BaseModel):
+    origin: str = Field(description="起点地址，如'宽窄巷子'")
+    destination: str = Field(description="终点地址，如'锦里'")
+    mode: str = Field(
+        default="transit",
+        description="出行方式: transit(公交)/driving(驾车)/walking(步行)",
+    )
+
+
+class MultiRouteInput(BaseModel):
+    waypoints: str = Field(description="用逗号分隔的地点列表，如'宽窄巷子,锦里,武侯祠'")
+    mode: str = Field(default="driving", description="出行方式: transit/driving/walking")
+
+
+class GeoCodeInput(BaseModel):
+    address: str = Field(description="地址名称，如'成都市锦江区春熙路'")
+
+
+# ── Helper ───────────────────────────────────────────────────
+
+def _is_error(result: dict) -> bool:
+    """检测 AmapClient 返回的统一错误格式。"""
+    return result.get("error", False)
+
+
+# ── Tool Factory Functions ───────────────────────────────────
+
 def amap_weather_factory(client: AmapClient):
-    @tool
+    @tool(args_schema=WeatherInput)
     def amap_weather(city: str) -> str:
-        """查询指定城市的实时天气，返回温度、天气状况、风力等信息。
-        :param city: 城市名称，如"成都"、"北京"
-        """
+        """查询指定城市的实时天气，返回温度、天气状况、风力等信息。"""
         result = client.weather(city)
-        if result.get("status") != "1" or not result.get("lives"):
+        if _is_error(result):
+            return f"❌ {result['info']}"
+        if not result.get("lives"):
             return f"⚠️ 未获取到 {city} 的天气数据"
         live = result["lives"][0]
         return (
@@ -23,13 +67,9 @@ def amap_weather_factory(client: AmapClient):
 
 
 def amap_poi_search_factory(client: AmapClient):
-    @tool
+    @tool(args_schema=POISearchInput)
     def amap_poi_search(city: str, keyword: str, category: str = "") -> str:
-        """搜索指定城市的POI（酒店/景点/餐厅）。
-        :param city: 城市名称
-        :param keyword: 搜索关键词
-        :param category: 类别，可选 hotel/restaurant/attraction
-        """
+        """搜索指定城市的POI（酒店/景点/餐厅），返回名称、地址、评分。"""
         types_map = {
             "hotel": "住宿服务",
             "restaurant": "餐饮服务",
@@ -37,8 +77,10 @@ def amap_poi_search_factory(client: AmapClient):
         }
         types = types_map.get(category, "风景名胜|餐饮服务|住宿服务")
         result = client.poi_search(keywords=keyword, types=types, city=city)
-        if result.get("status") != "1" or not result.get("pois"):
-            return f"⚠️ 未搜索到与'{keyword}'相关的{category}信息"
+        if _is_error(result):
+            return f"❌ {result['info']}"
+        if not result.get("pois"):
+            return f"⚠️ 未搜索到与'{keyword}'相关的{category or 'POI'}信息"
         pois = result["pois"][:10]
         lines = [f"搜索'{keyword}'结果:"]
         for i, poi in enumerate(pois, 1):
@@ -52,53 +94,48 @@ def amap_poi_search_factory(client: AmapClient):
 
 
 def amap_route_plan_factory(client: AmapClient):
-    @tool
+    @tool(args_schema=RoutePlanInput)
     def amap_route_plan(origin: str, destination: str, mode: str = "transit") -> str:
-        """规划两点之间的出行路线。
-        :param origin: 起点地址
-        :param destination: 终点地址
-        :param mode: 出行方式 transit=公交 driving=驾车 walking=步行
-        """
+        """规划两点之间的出行路线，返回距离、耗时、费用。"""
         result = client.direction(origin=origin, destination=destination, mode=mode)
-        if result.get("status") != "1":
-            return f"⚠️ 路线规划失败: {origin} → {destination}"
+        if _is_error(result):
+            return f"❌ {result['info']}"
         route = result.get("route", {})
         if mode == "transit" and route.get("transits"):
             transit = route["transits"][0]
             return (
                 f"从 {origin} → {destination}\n"
                 f"方式: 公交/地铁\n"
-                f"耗时: {transit.get('duration', '未知')}秒\n"
+                f"耗时: {int(transit.get('duration', 0)) // 60}分钟\n"
                 f"费用: {transit.get('cost', '未知')}元"
             )
         if mode in ("driving", "walking") and route.get("paths"):
             path = route["paths"][0]
             return (
                 f"从 {origin} → {destination}\n"
-                f"距离: {path.get('distance', '未知')}米\n"
-                f"耗时: {path.get('duration', '未知')}秒"
+                f"距离: {int(path.get('distance', 0))}米\n"
+                f"耗时: {int(path.get('duration', 0)) // 60}分钟"
             )
-        return f"从 {origin} → {destination}: 未找到路线"
+        return f"⚠️ 从 {origin} → {destination}: 未找到路线"
     return amap_route_plan
 
 
 def amap_multi_route_factory(client: AmapClient):
-    @tool
+    @tool(args_schema=MultiRouteInput)
     def amap_multi_route(waypoints: str, mode: str = "driving") -> str:
-        """规划多点串联路线（如一日游景点顺序）。
-        :param waypoints: 用逗号分隔的地点列表，如"宽窄巷子,锦里,武侯祠"
-        :param mode: 出行方式
-        """
+        """规划多点串联路线（如一日游景点顺序），返回逐段距离、耗时和汇总。"""
         points = [w.strip() for w in waypoints.split(",")]
         if len(points) < 2:
             return "⚠️ 至少需要两个地点"
         lines = [f"📍 多点路线规划 ({mode}):"]
         total_distance = 0
         total_duration = 0
+        has_error = False
         for i in range(len(points) - 1):
             result = client.direction(origin=points[i], destination=points[i + 1], mode=mode)
-            if result.get("status") != "1":
-                lines.append(f"  {points[i]} → {points[i+1]}: 路线计算失败")
+            if _is_error(result):
+                lines.append(f"  {points[i]} → {points[i+1]}: ❌ {result['info']}")
+                has_error = True
                 continue
             route = result.get("route", {})
             if mode == "transit" and route.get("transits"):
@@ -111,23 +148,26 @@ def amap_multi_route_factory(client: AmapClient):
                 dur = int(path.get("duration", 0))
             else:
                 lines.append(f"  {points[i]} → {points[i+1]}: 路线计算失败")
+                has_error = True
                 continue
             total_distance += dist
             total_duration += dur
-            lines.append(f"  {points[i]} → {points[i+1]}: {dist}米, {dur}秒")
-        lines.append(f"总距离: {total_distance}米, 总耗时: {total_duration}秒")
+            lines.append(f"  {points[i]} → {points[i+1]}: {dist}米, {int(dur // 60)}分钟")
+        lines.append(f"总距离: {total_distance}米, 总耗时: {int(total_duration // 60)}分钟")
+        if has_error:
+            lines.append("⚠️ 部分路段计算失败，总距离/耗时仅供参考")
         return "\n".join(lines)
     return amap_multi_route
 
 
 def amap_geo_code_factory(client: AmapClient):
-    @tool
+    @tool(args_schema=GeoCodeInput)
     def amap_geo_code(address: str) -> str:
-        """将地址转换为经纬度坐标。
-        :param address: 地址名称
-        """
+        """将地址转换为经纬度坐标，用于后续路线计算。"""
         result = client.geo_code(address)
-        if result.get("status") != "1" or not result.get("geocodes"):
+        if _is_error(result):
+            return f"❌ {result['info']}"
+        if not result.get("geocodes"):
             return f"⚠️ 无法解析地址: {address}"
         geo = result["geocodes"][0]
         return f"地址: {address}\n坐标: {geo['location']}"
