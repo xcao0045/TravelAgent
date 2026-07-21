@@ -280,13 +280,15 @@ def amap_multi_route_factory(client: AmapClient):
             total_duration += dur
             dur_min = int(dur // 60) if dur else 0
             dist_km = f"{dist/1000:.1f}km" if dist else "N/A"
-            lines.append(f"  {points[i]} → {points[i+1]}: {dist_km} ({dur_min}分钟)")
+            mode_label = {"driving": "驾车", "walking": "步行", "transit": "公交/地铁"}.get(used_mode, used_mode)
+            lines.append(f"  [{mode_label}] {points[i]} → {points[i+1]}: {dist_km} ({dur_min}分钟)")
 
         total_km = total_distance / 1000 if total_distance else 0
         total_min = int(total_duration // 60) if total_duration else 0
         lines.append(f"总距离: {total_km:.1f}km, 总耗时: {total_min}分钟")
         if has_error:
             lines.append("⚠️ 部分路段计算失败，总距离/耗时仅供参考")
+        lines.append("📌 以上 [驾车]/[步行]/[公交] 标签为实际出行方式，请在方案中准确引用。")
         return "\n".join(lines)
     return amap_multi_route
 
