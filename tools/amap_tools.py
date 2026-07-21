@@ -148,7 +148,6 @@ def amap_poi_search_factory(client: AmapClient):
         if _is_error(result):
             return f"❌ {result['info']}"
         if not result.get("pois"):
-            # 首次搜索无结果 → 用兜底词重试
             fallback = _EMPTY_FALLBACK.get(category, "热门推荐")
             result2 = client.poi_search(keywords=fallback, types=types, city=city)
             if not _is_error(result2) and result2.get("pois"):
@@ -157,6 +156,13 @@ def amap_poi_search_factory(client: AmapClient):
             else:
                 return f"⚠️ 未搜索到与'{keyword}'相关的{category or 'POI'}信息（已尝试: {search_keyword}）"
         pois = result["pois"][:10]
+        # ── 关键：将 POI 坐标写入 geocode 缓存 ──
+        # 后续 LLM 调用 route 工具时只传名字, resolve_coord 从缓存命中, 避免 QPS/文本解析失败
+        for poi in pois:
+            loc = poi.get("location", "")
+            name = poi.get("name", "")
+            if loc and name:
+                client._geocode_cache[name] = loc
         lines = [f"搜索'{keyword}'结果（关键词: {search_keyword}）:"]
         for i, poi in enumerate(pois, 1):
             loc = poi.get("location", "")

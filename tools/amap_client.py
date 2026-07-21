@@ -83,10 +83,17 @@ class AmapClient:
     def resolve_coord(self, place: str, city: str = "") -> str | None:
         """将地名解析为 'lon,lat' 坐标。解析失败返回 None。
 
-        解析链: 缓存 → 坐标检测 → POI文本提取 → geocode API → 城市范围校验
+        解析链: 缓存 → 坐标检测 → POI文本提取 → '名称;lng,lat' 分隔 → geocode API → 城市范围校验
         """
         if place in self._geocode_cache:
             return self._geocode_cache[place]
+        # 处理 '名称;lng,lat' 格式（LLM 显式传入坐标）
+        semicolon = _split_semicolon_coord(place)
+        if semicolon:
+            name, coord = semicolon
+            self._geocode_cache[name] = coord  # 缓存名称→坐标
+            self._geocode_cache[place] = coord
+            return self._validate_coord(coord, city)
         if _looks_like_coord(place):
             self._geocode_cache[place] = place
             return self._validate_coord(place, city)
@@ -136,6 +143,20 @@ def _looks_like_coord(text: str) -> bool:
     """检测文本是否已经是 'lng,lat' 坐标格式。"""
     import re
     return bool(re.match(r'^\d{2,3}\.\d+,\d{2,3}\.\d+$', text.strip()))
+
+
+def _split_semicolon_coord(text: str) -> tuple[str, str] | None:
+    """解析 '名称;lng,lat' 格式。返回 (name, coord) 或 None。"""
+    import re
+    if ';' not in text:
+        return None
+    parts = text.rsplit(';', 1)
+    if len(parts) != 2:
+        return None
+    name, coord_part = parts[0].strip(), parts[1].strip()
+    if re.match(r'^\d{2,3}\.\d+,\d{2,3}\.\d+$', coord_part):
+        return name, coord_part
+    return None
 
 
 def _extract_coord_from_text(text: str) -> str | None:
