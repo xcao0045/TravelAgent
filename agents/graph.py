@@ -43,8 +43,10 @@ def _init_dependencies(settings: Settings):
     vector_store = VectorStoreManager(
         persist_dir=settings.chroma_persist_dir,
         embeddings=embeddings,
-        chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap,
+        child_chunk_size=settings.child_chunk_size,
+        child_chunk_overlap=settings.child_chunk_overlap,
+        parent_chunk_size=settings.parent_chunk_size,
+        parent_chunk_overlap=settings.parent_chunk_overlap,
     )
     _retriever = DualRetriever(vector_store, similarity_threshold=settings.similarity_threshold)
 

@@ -20,8 +20,10 @@ settings = Settings.from_env()
 def get_vector_store():
     embeddings = create_embeddings(settings.bailian_api_key, settings.embedding_model)
     return VectorStoreManager(settings.chroma_persist_dir, embeddings,
-                              chunk_size=settings.chunk_size,
-                              chunk_overlap=settings.chunk_overlap)
+                              child_chunk_size=settings.child_chunk_size,
+                              child_chunk_overlap=settings.child_chunk_overlap,
+                              parent_chunk_size=settings.parent_chunk_size,
+                              parent_chunk_overlap=settings.parent_chunk_overlap)
 
 vs = get_vector_store()
 

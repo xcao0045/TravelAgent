@@ -16,6 +16,13 @@ class Settings:
     top_k_preferences: int = 5
     top_k_cases: int = 3
     similarity_threshold: float = 0.45
+    # Child chunk (向量化, 存入 ChromaDB)
+    child_chunk_size: int = 500
+    child_chunk_overlap: int = 50
+    # Parent chunk (仅存储文本, 检索命中 Child 后回查返回)
+    parent_chunk_size: int = 2000
+    parent_chunk_overlap: int = 200
+    # 向后兼容别名 (已废弃, 请使用 child_chunk_size / child_chunk_overlap)
     chunk_size: int = 500
     chunk_overlap: int = 50
 
@@ -31,6 +38,10 @@ class Settings:
             top_k_preferences=int(os.getenv("TOP_K_PREFERENCES", "5")),
             top_k_cases=int(os.getenv("TOP_K_CASES", "3")),
             similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.45")),
+            child_chunk_size=int(os.getenv("CHILD_CHUNK_SIZE", "500")),
+            child_chunk_overlap=int(os.getenv("CHILD_CHUNK_OVERLAP", "50")),
+            parent_chunk_size=int(os.getenv("PARENT_CHUNK_SIZE", "2000")),
+            parent_chunk_overlap=int(os.getenv("PARENT_CHUNK_OVERLAP", "200")),
             chunk_size=int(os.getenv("CHUNK_SIZE", "500")),
             chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
         )

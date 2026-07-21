@@ -33,6 +33,25 @@ def test_settings_from_env_reads_all_fields():
     assert settings.top_k_preferences == 5
     assert settings.top_k_cases == 3
     assert settings.similarity_threshold == 0.45
+    # New chunk size fields
+    assert settings.child_chunk_size == 500
+    assert settings.child_chunk_overlap == 50
+    assert settings.parent_chunk_size == 2000
+    assert settings.parent_chunk_overlap == 200
+
+
+def test_child_chunk_size_from_env():
+    """环境变量 CHILD_CHUNK_SIZE 生效"""
+    os.environ["CHILD_CHUNK_SIZE"] = "800"
+    settings = Settings.from_env()
+    assert settings.child_chunk_size == 800
+
+
+def test_parent_chunk_size_from_env():
+    """环境变量 PARENT_CHUNK_SIZE 生效"""
+    os.environ["PARENT_CHUNK_SIZE"] = "3000"
+    settings = Settings.from_env()
+    assert settings.parent_chunk_size == 3000
 
 
 def test_settings_uses_defaults_when_env_missing():
@@ -45,3 +64,5 @@ def test_settings_uses_defaults_when_env_missing():
     assert settings.top_k_preferences == 5
     assert settings.top_k_cases == 3
     assert settings.similarity_threshold == 0.45
+    assert settings.child_chunk_size == 500
+    assert settings.parent_chunk_size == 2000
