@@ -90,6 +90,7 @@ def _execute_tool_calls(response, available_tools: list) -> list[ToolMessage]:
         tool_args = tc.get("args", {})
         tool = _tool_by_name(available_tools, tool_name)
         if tool is None:
+            print(f"[ToolCall] UNKNOWN: {tool_name} args={tool_args}")
             messages.append(ToolMessage(
                 content=f"❌ 未知工具: {tool_name}",
                 tool_call_id=tc["id"],
@@ -97,8 +98,14 @@ def _execute_tool_calls(response, available_tools: list) -> list[ToolMessage]:
             continue
         try:
             result = tool.invoke(tool_args)
+            result_str = str(result)
+            # 打印结果前150字符用于诊断
+            preview = result_str[:150].replace("\n", "\\n")
+            print(f"[ToolCall] {tool_name}({tool_args}) → "
+                  f"({len(result_str)} chars) {preview}")
         except Exception as e:
             result = f"❌ 工具执行异常: {e}"
+            print(f"[ToolCall] {tool_name}({tool_args}) → ERROR: {e}")
         messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
     return messages
 

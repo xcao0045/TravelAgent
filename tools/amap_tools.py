@@ -46,23 +46,51 @@ def _is_error(result: dict) -> bool:
 
 # ── Tool Factory Functions ───────────────────────────────────
 
+# 城市名 → adcode 映射（高德天气 API 要求 adcode）
+_CITY_ADCODE = {
+    "北京": "110000", "上海": "310000", "广州": "440100", "深圳": "440300",
+    "成都": "510100", "杭州": "330100", "苏州": "320500", "南京": "320100",
+    "武汉": "420100", "西安": "610100", "重庆": "500000", "厦门": "350200",
+    "青岛": "370200", "大连": "210200", "三亚": "460200", "昆明": "530100",
+    "长沙": "430100", "郑州": "410100", "天津": "120000", "桂林": "450300",
+    "丽江": "530700", "大理": "532900", "拉萨": "540100", "贵阳": "520100",
+}
+
+
 def amap_weather_factory(client: AmapClient):
     @tool(args_schema=WeatherInput)
     def amap_weather(city: str) -> str:
         """查询指定城市的实时天气，返回温度、天气状况、风力等信息。"""
-        result = client.weather(city)
+        # 高德天气 API 优先使用 adcode
+        city_param = _CITY_ADCODE.get(city, city)
+        result = client.weather(city_param)
         if _is_error(result):
             return f"❌ {result['info']}"
-        if not result.get("lives"):
-            return f"⚠️ 未获取到 {city} 的天气数据"
-        live = result["lives"][0]
-        return (
-            f"城市: {live['city']}\n"
-            f"天气: {live['weather']}\n"
-            f"温度: {live['temperature']}°C\n"
-            f"风向: {live.get('winddirection', '未知')}\n"
-            f"风力: {live.get('windpower', '未知')}"
-        )
+        # 优先取实时天气 lives，其次取预报 forecasts
+        if result.get("lives"):
+            live = result["lives"][0]
+            return (
+                f"城市: {live.get('city', city)}\n"
+                f"天气: {live.get('weather', '未知')}\n"
+                f"温度: {live.get('temperature', '未知')}°C\n"
+                f"风向: {live.get('winddirection', '未知')}\n"
+                f"风力: {live.get('windpower', '未知')}\n"
+                f"湿度: {live.get('humidity', '未知')}%"
+            )
+        if result.get("forecasts"):
+            fc = result["forecasts"][0]
+            casts = fc.get("casts", [])
+            if casts:
+                today = casts[0]
+                return (
+                    f"城市: {fc.get('city', city)}\n"
+                    f"日期: {today.get('date', '未知')}\n"
+                    f"白天天气: {today.get('dayweather', '未知')}\n"
+                    f"夜间天气: {today.get('nightweather', '未知')}\n"
+                    f"温度: {today.get('nighttemp', '?')}°C ~ {today.get('daytemp', '?')}°C\n"
+                    f"风向: {today.get('daywind', '未知')} {today.get('daypower', '')}"
+                )
+        return f"⚠️ 未获取到 {city} 的天气数据（已尝试 adcode={city_param}）"
     return amap_weather
 
 
@@ -99,15 +127,30 @@ def amap_route_plan_factory(client: AmapClient):
         """规划两点之间的出行路线，返回距离、耗时、费用。"""
         result = client.direction(origin=origin, destination=destination, mode=mode)
         if _is_error(result):
-            return f"❌ {result['info']}"
+            # 如果是 transit 失败，尝试用 driving 重试
+            if mode == "transit":
+                result2 = client.direction(origin=origin, destination=destination, mode="driving")
+                if not _is_error(result2):
+                    route = result2.get("route", {})
+                    if route.get("paths"):
+                        path = route["paths"][0]
+                        return (
+                            f"从 {origin} → {destination}\n"
+                            f"方式: 驾车（公交路线暂无数据）\n"
+                            f"距离: {int(path.get('distance', 0))}米\n"
+                            f"耗时: {int(path.get('duration', 0)) // 60}分钟"
+                        )
+            return f"❌ 从 {origin} 到 {destination} 路线查询失败: {result['info']}"
         route = result.get("route", {})
+        # 优先按请求的 mode 解析
         if mode == "transit" and route.get("transits"):
             transit = route["transits"][0]
             return (
                 f"从 {origin} → {destination}\n"
                 f"方式: 公交/地铁\n"
                 f"耗时: {int(transit.get('duration', 0)) // 60}分钟\n"
-                f"费用: {transit.get('cost', '未知')}元"
+                f"费用: {transit.get('cost', '未知')}元\n"
+                f"步行距离: {transit.get('walking_distance', '未知')}米"
             )
         if mode in ("driving", "walking") and route.get("paths"):
             path = route["paths"][0]
@@ -116,14 +159,23 @@ def amap_route_plan_factory(client: AmapClient):
                 f"距离: {int(path.get('distance', 0))}米\n"
                 f"耗时: {int(path.get('duration', 0)) // 60}分钟"
             )
-        return f"⚠️ 从 {origin} → {destination}: 未找到路线"
+        # transit 请求但返回的可能是 paths 格式 → 回退
+        if route.get("paths"):
+            path = route["paths"][0]
+            return (
+                f"从 {origin} → {destination}\n"
+                f"距离: {int(path.get('distance', 0))}米\n"
+                f"耗时: {int(path.get('duration', 0)) // 60}分钟"
+            )
+        return f"⚠️ 从 {origin} → {destination}: 未找到路线（请使用更精确的地址重试）"
     return amap_route_plan
 
 
 def amap_multi_route_factory(client: AmapClient):
     @tool(args_schema=MultiRouteInput)
     def amap_multi_route(waypoints: str, mode: str = "driving") -> str:
-        """规划多点串联路线（如一日游景点顺序），返回逐段距离、耗时和汇总。"""
+        """规划多点串联路线（如一日游景点顺序），返回逐段距离、耗时和汇总。
+        优先使用 driving 模式以获得更可靠的路线数据。"""
         points = [w.strip() for w in waypoints.split(",")]
         if len(points) < 2:
             return "⚠️ 至少需要两个地点"
@@ -134,28 +186,36 @@ def amap_multi_route_factory(client: AmapClient):
         for i in range(len(points) - 1):
             result = client.direction(origin=points[i], destination=points[i + 1], mode=mode)
             if _is_error(result):
-                lines.append(f"  {points[i]} → {points[i+1]}: ❌ {result['info']}")
-                has_error = True
-                continue
+                # transit 失败 → 尝试 driving
+                if mode == "transit":
+                    result = client.direction(origin=points[i], destination=points[i + 1], mode="driving")
+                if _is_error(result):
+                    lines.append(f"  {points[i]} → {points[i+1]}: ❌ {result['info']}")
+                    has_error = True
+                    continue
             route = result.get("route", {})
+            dist = 0
+            dur = 0
+            # 尝试多种解析路径
             if mode == "transit" and route.get("transits"):
                 transit = route["transits"][0]
-                dist = 0
                 dur = int(transit.get("duration", 0))
             elif route.get("paths"):
                 path = route["paths"][0]
                 dist = int(path.get("distance", 0))
                 dur = int(path.get("duration", 0))
             else:
-                lines.append(f"  {points[i]} → {points[i+1]}: 路线计算失败")
+                lines.append(f"  {points[i]} → {points[i+1]}: 路线计算失败（地址无法识别）")
                 has_error = True
                 continue
             total_distance += dist
             total_duration += dur
-            lines.append(f"  {points[i]} → {points[i+1]}: {dist}米, {int(dur // 60)}分钟")
-        lines.append(f"总距离: {total_distance}米, 总耗时: {int(total_duration // 60)}分钟")
+            dur_min = int(dur // 60) if dur else 0
+            dist_km = f"{dist/1000:.1f}km" if dist else "N/A"
+            lines.append(f"  {points[i]} → {points[i+1]}: {dist_km} ({dur_min}分钟)")
+        lines.append(f"总距离: {'{:.1f}'.format(total_distance/1000)}km, 总耗时: {int(total_duration // 60)}分钟")
         if has_error:
-            lines.append("⚠️ 部分路段计算失败，总距离/耗时仅供参考")
+            lines.append("⚠️ 部分路段无法识别地址，总距离/耗时仅供参考")
         return "\n".join(lines)
     return amap_multi_route
 
