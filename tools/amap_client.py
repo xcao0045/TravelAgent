@@ -8,6 +8,7 @@ class AmapClient:
     def __init__(self, api_key: str, timeout: int = 10):
         self.api_key = api_key
         self.timeout = timeout
+        self._geocode_cache: dict[str, str | None] = {}  # 地名→坐标 缓存
 
     def _get(self, path: str, params: dict) -> dict:
         """统一 GET 请求 + 错误处理。
@@ -63,12 +64,33 @@ class AmapClient:
         return self._get("/geocode/geo", {"address": address})
 
     def resolve_coord(self, place: str) -> str | None:
-        """将地名解析为 'lon,lat' 坐标字符串。解析失败返回 None。"""
+        """将地名解析为 'lon,lat' 坐标字符串。解析失败返回 None。
+
+        两步策略：
+        1. 检查 geocode 缓存（避免重复调用 hit QPS 限制）
+        2. 调用高德 geocode API
+        """
+        if place in self._geocode_cache:
+            return self._geocode_cache[place]
+        # 如果文本本身看起来像坐标，直接返回（不是地名而是已解析的坐标）
+        if _looks_like_coord(place):
+            self._geocode_cache[place] = place
+            return place
         result = self.geo_code(place)
         if result.get("error"):
+            self._geocode_cache[place] = None
             return None
         geocodes = result.get("geocodes", [])
         if not geocodes:
+            self._geocode_cache[place] = None
             return None
         location = geocodes[0].get("location", "")
-        return location if location else None
+        ret = location if location else None
+        self._geocode_cache[place] = ret
+        return ret
+
+
+def _looks_like_coord(text: str) -> bool:
+    """检测文本是否已经是 'lng,lat' 坐标格式。"""
+    import re
+    return bool(re.match(r'^\d{2,3}\.\d+,\d{2,3}\.\d+$', text.strip()))

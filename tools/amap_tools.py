@@ -159,10 +159,13 @@ def amap_poi_search_factory(client: AmapClient):
         pois = result["pois"][:10]
         lines = [f"搜索'{keyword}'结果（关键词: {search_keyword}）:"]
         for i, poi in enumerate(pois, 1):
+            loc = poi.get("location", "")
+            coord_info = f" | 坐标: {loc}" if loc else ""
             lines.append(
                 f"{i}. {poi['name']} | "
                 f"地址: {poi.get('address', '未知')} | "
                 f"评分: {poi.get('biz_ext', {}).get('rating', '暂无')}"
+                f"{coord_info}"
             )
         return "\n".join(lines)
     return amap_poi_search
@@ -213,9 +216,12 @@ def amap_route_plan_factory(client: AmapClient):
     @tool(args_schema=RoutePlanInput)
     def amap_route_plan(origin: str, destination: str, mode: str = "transit") -> str:
         """规划两点之间的出行路线，返回距离、耗时、费用。
-        自动降级：transit(无权限)→driving→walking；文本名→坐标。"""
+        自动降级：transit(无权限)→driving→walking；坐标优先→文本名回退。"""
         mode = _normalize_mode(mode)
-        route, used_mode, error = _try_direction_with_retry(client, origin, destination, mode)
+        # 预解析坐标
+        o = client.resolve_coord(origin) or origin
+        d = client.resolve_coord(destination) or destination
+        route, used_mode, error = _try_direction_with_retry(client, o, d, mode)
 
         if route is None:
             return f"❌ 从 {origin} 到 {destination} 路线查询失败: {error}"
@@ -246,20 +252,30 @@ def amap_multi_route_factory(client: AmapClient):
     @tool(args_schema=MultiRouteInput)
     def amap_multi_route(waypoints: str, mode: str = "driving") -> str:
         """规划多点串联路线，返回逐段距离、耗时和汇总。
-        自动降级：transit(无权限)→driving；文本名→坐标。"""
+        坐标优先：预解析所有地名→坐标（geocode），用坐标调方向 API，避免文本解析偏差。"""
         mode = _normalize_mode(mode)
         points = [w.strip() for w in waypoints.split(",") if w.strip()]
         if len(points) < 2:
             return f"⚠️ 至少需要两个地点才能规划路线（当前仅 {len(points)} 个: {waypoints}）"
 
-        lines = [f"📍 多点路线规划 ({mode}):"]
+        # ── 预解析：所有点 → 坐标（减少 QPS：每个点只 geocode 一次）──
+        coords: list[str | None] = []
+        for p in points:
+            coord = client.resolve_coord(p)
+            coords.append(coord)
+
+        resolved_count = sum(1 for c in coords if c is not None)
+        lines = [f"📍 多点路线规划 ({mode}, {resolved_count}/{len(points)} 点已解析为坐标):"]
         total_distance = 0
         total_duration = 0
         has_error = False
 
         for i in range(len(points) - 1):
-            route, used_mode, error = _try_direction_with_retry(
-                client, points[i], points[i + 1], mode)
+            # 优先使用坐标
+            o = coords[i] if coords[i] else points[i]
+            d = coords[i + 1] if coords[i + 1] else points[i + 1]
+
+            route, used_mode, error = _try_direction_with_retry(client, o, d, mode)
             if route is None:
                 lines.append(f"  {points[i]} → {points[i+1]}: ❌ {error}")
                 has_error = True
