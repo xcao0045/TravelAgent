@@ -79,15 +79,32 @@ def _tool_by_name(tools: list, name: str):
     return None
 
 
+# 用于跨轮次去重：记录已调用的 (tool_name, frozenset(args))
+_CALLED_TOOLS: set[tuple[str, frozenset]] = set()
+
+
+def _reset_tool_call_tracker():
+    """每次图执行前重置调用追踪。"""
+    _CALLED_TOOLS.clear()
+
+
 def _execute_tool_calls(response, available_tools: list) -> list[ToolMessage]:
     """执行 LLM 返回的 tool_calls，返回 ToolMessage 列表。
 
-    每个 Tool 只调用一次。若 tool 不存在或执行异常，以 ToolMessage 包装错误信息。
+    自动去重：同一 tool+args 组合不重复调用。
+    若 tool 不存在或执行异常，以 ToolMessage 包装错误信息。
     """
     messages = []
     for tc in response.tool_calls:
         tool_name = tc.get("name", "")
         tool_args = tc.get("args", {})
+        # 去重：同一 tool+args 组合已调用过 → 跳过
+        call_key = (tool_name, frozenset(tool_args.items()))
+        if call_key in _CALLED_TOOLS:
+            print(f"[ToolCall] SKIP (dup): {tool_name}({tool_args})")
+            continue
+        _CALLED_TOOLS.add(call_key)
+
         tool = _tool_by_name(available_tools, tool_name)
         if tool is None:
             print(f"[ToolCall] UNKNOWN: {tool_name} args={tool_args}")
@@ -99,7 +116,6 @@ def _execute_tool_calls(response, available_tools: list) -> list[ToolMessage]:
         try:
             result = tool.invoke(tool_args)
             result_str = str(result)
-            # 打印结果前150字符用于诊断
             preview = result_str[:150].replace("\n", "\\n")
             print(f"[ToolCall] {tool_name}({tool_args}) → "
                   f"({len(result_str)} chars) {preview}")
@@ -147,6 +163,7 @@ def build_graph(settings: Settings):
 
 def run_travel_plan(user_input: dict, settings: Settings) -> TravelPlanState:
     """执行一次旅行规划"""
+    _reset_tool_call_tracker()
     graph = build_graph(settings)
     initial_state = TravelPlanState(
         destination=user_input.get("destination", ""),

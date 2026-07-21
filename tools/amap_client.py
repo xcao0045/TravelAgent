@@ -61,3 +61,14 @@ class AmapClient:
     def geo_code(self, address: str) -> dict:
         """地理编码：地址→经纬度"""
         return self._get("/geocode/geo", {"address": address})
+
+    def resolve_coord(self, place: str) -> str | None:
+        """将地名解析为 'lon,lat' 坐标字符串。解析失败返回 None。"""
+        result = self.geo_code(place)
+        if result.get("error"):
+            return None
+        geocodes = result.get("geocodes", [])
+        if not geocodes:
+            return None
+        location = geocodes[0].get("location", "")
+        return location if location else None
