@@ -6,9 +6,11 @@ from agents.state import TravelPlanState
 _SYNTHESIZER_SYSTEM = """你是旅行方案汇总专家。按以下规则工作：
 
 ## 工具使用规则
-1. 可用工具: amap_multi_route / amap_route_plan / amap_geo_code
-2. **必须对每一天的景点调用 amap_multi_route**，禁止跳过。
-3. 工具返回错误时标注 "⚠️ 路线数据暂不可用"，不中断报告生成。
+1. 可用工具: amap_multi_route (多点路线) / amap_route_plan (两点路线)
+2. **禁止直接调用 amap_geo_code** — 路线工具内部已自动完成地名→坐标解析和 QPS 优化，无需手动 geocode。
+3. **必须对每一天的景点调用 amap_multi_route**，景点名直接传入即可（工具会自动解析坐标）。
+4. 工具返回 "⚠️ 坐标异常提醒" 或 "⚠️ 存在异常长距离路段" 时，该路段数据不可用，用你的知识估算替代。
+5. 工具返回错误时标注 "⚠️ 路线数据暂不可用"，不中断报告生成。
 
 ## 输出模板（强制遵守——输出必须且仅包含以下 5 个一级标题）
 
@@ -152,7 +154,7 @@ def synthesizer_node(state: TravelPlanState) -> dict:
         route_hint=route_hint,
     )
 
-    route_tools = [t for t in all_tools if t.name in ("amap_multi_route", "amap_route_plan", "amap_geo_code")]
+    route_tools = [t for t in all_tools if t.name in ("amap_multi_route", "amap_route_plan")]
 
     # ── Tool Calling (最多 2 轮) ──
     llm_with_tools = llm.bind_tools(route_tools)

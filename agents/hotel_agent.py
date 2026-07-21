@@ -6,11 +6,9 @@ from agents.state import TravelPlanState
 _HOTEL_SYSTEM = """你是酒店推荐专家。按以下规则工作：
 
 ## 工具使用规则（必须遵守）
-1. 可用工具:
-   - amap_poi_search: 搜索酒店 (category="hotel")
-   - amap_geo_code: 地址→经纬度坐标
+1. 可用工具: amap_poi_search (搜索酒店, category="hotel")
 2. **你必须调用 amap_poi_search 至少一次**。禁止跳过工具调用直接生成结果。
-   搜索后可用 amap_geo_code 查询酒店坐标以便后续路线计算。
+   POI 搜索结果已包含酒店坐标，synthesizer 的路线工具会自动解析。
 
 ## API 调用规则
 1. 每个工具最多调用 1 次，禁止重试。
@@ -92,7 +90,7 @@ def hotel_agent_node(state: TravelPlanState) -> dict:
     prefs_context = "\n".join(prefs_lines) if prefs_lines else "(无相关偏好数据)"
     cases_context = "\n".join(cases_lines) if cases_lines else "(无相关历史案例)"
 
-    agent_tools = [t for t in all_tools if t.name in ("amap_poi_search", "amap_geo_code")]
+    agent_tools = [t for t in all_tools if t.name in ("amap_poi_search",)]
 
     system_prompt = _HOTEL_SYSTEM.format(
         destination=destination,

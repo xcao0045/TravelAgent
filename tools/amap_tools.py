@@ -252,26 +252,37 @@ def amap_multi_route_factory(client: AmapClient):
     @tool(args_schema=MultiRouteInput)
     def amap_multi_route(waypoints: str, mode: str = "driving") -> str:
         """规划多点串联路线，返回逐段距离、耗时和汇总。
-        坐标优先：预解析所有地名→坐标（geocode），用坐标调方向 API，避免文本解析偏差。"""
+        坐标优先：从 POI 文本提取坐标 → geocode → 城市范围校验 → 方向 API。"""
         mode = _normalize_mode(mode)
         points = [w.strip() for w in waypoints.split(",") if w.strip()]
         if len(points) < 2:
             return f"⚠️ 至少需要两个地点才能规划路线（当前仅 {len(points)} 个: {waypoints}）"
 
-        # ── 预解析：所有点 → 坐标（减少 QPS：每个点只 geocode 一次）──
+        # ── 预解析所有点 → 坐标 ──
         coords: list[str | None] = []
+        coord_warnings: list[str] = []
         for p in points:
             coord = client.resolve_coord(p)
-            coords.append(coord)
+            if coord and "⚠️" in coord:
+                coord_warnings.append(f"    {p}: {coord}")
+                # 提取纯坐标部分用于 API 调用
+                import re
+                m = re.match(r'(\d+\.\d+,\d+\.\d+)', coord)
+                coords.append(m.group(1) if m else coord)
+            else:
+                coords.append(coord)
 
         resolved_count = sum(1 for c in coords if c is not None)
-        lines = [f"📍 多点路线规划 ({mode}, {resolved_count}/{len(points)} 点已解析为坐标):"]
+        lines = [f"📍 多点路线规划 ({mode}, {resolved_count}/{len(points)} 点已解析):"]
+        if coord_warnings:
+            lines.append("  ⚠️ 坐标异常提醒（可能为跨城市误匹配）：")
+            lines.extend(coord_warnings)
         total_distance = 0
         total_duration = 0
         has_error = False
+        has_suspicious_distance = False
 
         for i in range(len(points) - 1):
-            # 优先使用坐标
             o = coords[i] if coords[i] else points[i]
             d = coords[i + 1] if coords[i + 1] else points[i + 1]
 
@@ -295,15 +306,23 @@ def amap_multi_route_factory(client: AmapClient):
             total_distance += dist
             total_duration += dur
             dur_min = int(dur // 60) if dur else 0
-            dist_km = f"{dist/1000:.1f}km" if dist else "N/A"
+            dist_m = dist if dist else 0
+            dist_km_str = f"{dist_m/1000:.1f}km" if dist_m else "N/A"
             mode_label = {"driving": "驾车", "walking": "步行", "transit": "公交/地铁"}.get(used_mode, used_mode)
-            lines.append(f"  [{mode_label}] {points[i]} → {points[i+1]}: {dist_km} ({dur_min}分钟)")
+            # 距离合理性检查
+            suspicious = ""
+            if dist_m > 100000:  # >100km
+                suspicious = " ⚠️ 距离异常(>100km)，可能坐标数据有误，请勿使用此段"
+                has_suspicious_distance = True
+            lines.append(f"  [{mode_label}] {points[i]} → {points[i+1]}: {dist_km_str} ({dur_min}分钟){suspicious}")
 
         total_km = total_distance / 1000 if total_distance else 0
         total_min = int(total_duration // 60) if total_duration else 0
         lines.append(f"总距离: {total_km:.1f}km, 总耗时: {total_min}分钟")
+        if has_suspicious_distance:
+            lines.append("⚠️ 存在异常长距离路段（>100km），可能因高德 POI 坐标数据有误，建议人工核实景点位置")
         if has_error:
-            lines.append("⚠️ 部分路段计算失败，总距离/耗时仅供参考")
+            lines.append("⚠️ 部分路段计算失败")
         lines.append("📌 以上 [驾车]/[步行]/[公交] 标签为实际出行方式，请在方案中准确引用。")
         return "\n".join(lines)
     return amap_multi_route
