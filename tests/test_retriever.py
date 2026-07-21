@@ -185,43 +185,35 @@ class TestRRFFusion:
         # 向量路: d1 rank1, d2 rank2, d3 rank3
         vec_ranked = [d1, d2, d3]
         # BM25路: d2 rank1, d1 rank2, d3 rank3
-        bm25_ranked = [("p2", 3.5), ("p1", 2.8), ("p3", 1.5)]
+        bm25_ranked = [(d2, 3.5), (d1, 2.8), (d3, 1.5)]
 
         result = rrf_fuse(vec_ranked, bm25_ranked, k=60)
 
-        # d1: 1/61 + 1/62 = 0.03252
-        # d2: 1/62 + 1/61 = 0.03252  (symmetrical)
-        # At k=60, both have same score. But d3: 1/63+1/63 = 0.03175
-        # d1 and d2 should be top 2
         assert result[0] in (d1, d2)
         assert result[1] in (d1, d2)
         assert result[2] == d3
 
-    def test_rrf_bm25_only_doc_not_in_vec_not_included(self):
-        """仅出现在 BM25 路但无 Document 对象的条目 → 不参与融合。
-        真实场景中，BM25-only 的文档会先通过 ChromaDB.get() 回查补全 Document，
-        再传入 rrf_fuse，因此此边界由上层 Ensemble Retriever 负责。"""
+    def test_rrf_bm25_only_doc_appears_in_fusion(self):
+        """只出现在 BM25 路的 Document 也参与融合"""
         d1 = Document(page_content="苏州园林", metadata={"parent_id": "p1"})
         d2 = Document(page_content="杭州西湖", metadata={"parent_id": "p2"})
+        d_bm25 = Document(page_content="桂林山水", metadata={"parent_id": "p_bm25"})
 
         vec_ranked = [d1, d2]
-        bm25_ranked = [("p_unknown", 5.0), ("p1", 2.0)]
+        bm25_ranked = [(d_bm25, 5.0), (d1, 2.0)]
 
         result = rrf_fuse(vec_ranked, bm25_ranked, k=60)
-        # p_unknown 没有对应的 Document → 不出现
-        # p1 两路都有分 → 排第一
-        assert result[0] == d1
-        assert len(result) == 2
+        # d_bm25 在 BM25 路排第1 → 出现在融合结果中
+        assert d_bm25 in result
+        assert result[0] == d1  # d1 两路都有分, 排第一
 
     def test_rrf_empty_inputs(self):
         """空输入 → 返回空列表，不抛异常"""
-        # 两边都空
         assert rrf_fuse([], []) == []
-        # BM25 为空
         d1 = Document(page_content="test", metadata={"parent_id": "p1"})
         assert rrf_fuse([d1], []) == [d1]
-        # 向量为空
-        assert rrf_fuse([], [("p1", 3.0)]) == []
+        # 纯 BM25 场景
+        assert rrf_fuse([], [(d1, 3.0)]) == [d1]
 
     def test_rrf_different_k_values_change_weights(self):
         """k 值越小 → 排名差距影响越大"""
@@ -229,15 +221,10 @@ class TestRRFFusion:
         d2 = Document(page_content="top2", metadata={"parent_id": "p2"})
 
         vec_ranked = [d1, d2]
-        bm25_ranked = [("p2", 5.0), ("p1", 1.0)]  # d2 rank1, d1 rank2
+        bm25_ranked = [(d2, 5.0), (d1, 1.0)]
 
-        # k=60 (接近等权): d1=1/61+1/62=0.0325, d2=1/62+1/61=0.0325 → 同分
         result_k60 = rrf_fuse(vec_ranked, bm25_ranked, k=60)
-
-        # k=0 (排名权重大): d1=1/1+1/2=1.5, d2=1/2+1/1=1.5 → 也同分
-        # k=10: d1=1/11+1/12=0.174, d2=1/12+1/11=0.174 → 同分
         result_k10 = rrf_fuse(vec_ranked, bm25_ranked, k=10)
 
-        # 两者都返回 2 个文档
         assert len(result_k60) == 2
         assert len(result_k10) == 2

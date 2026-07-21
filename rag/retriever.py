@@ -2,15 +2,20 @@ from langchain_core.documents import Document
 from rag.vector_store import VectorStoreManager
 
 
+def _doc_key(doc: Document) -> str:
+    """为 Document 建立稳定的 key：优先 parent_id，其次 Python id。"""
+    return doc.metadata.get("parent_id", "") or str(id(doc))
+
+
 def rrf_fuse(
     vec_ranked: list[Document],
-    bm25_ranked: list[tuple[str, float]],
+    bm25_ranked: list[tuple[Document, float]],
     k: int = 60,
 ) -> list[Document]:
     """RRF (Reciprocal Rank Fusion) — 融合向量和 BM25 两路 Child 排名。
 
     vec_ranked: 向量检索返回的 Document 列表（已按相似度降序排列）
-    bm25_ranked: BM25 检索返回的 [(chroma_id_or_parent_id, score), ...]（已按得分降序）
+    bm25_ranked: BM25 检索返回的 [(Document, score), ...]（已按得分降序）
     k: RRF 常量，默认 60。k 越小排名权重越大。
 
     返回按 RRF 得分降序排列的 Document 列表（Child 层，需后续 _resolve_to_parents）。
@@ -20,31 +25,28 @@ def rrf_fuse(
     if not bm25_ranked:
         return list(vec_ranked)
     if not vec_ranked:
-        return []
-
-    # 为 Document 建立稳定的 ID：优先 parent_id，其次 Python id
-    def _doc_key(doc: Document) -> str:
-        return doc.metadata.get("parent_id", "") or str(id(doc))
+        # 纯 BM25 场景：BM25 结果已包含 Document 对象，直接按得分返回
+        return [doc for doc, _ in bm25_ranked]
 
     # 向量路排名: {doc_key: rank}
     vec_ranks: dict[str, int] = {}
     for rank, doc in enumerate(vec_ranked, 1):
         vec_ranks[_doc_key(doc)] = rank
 
-    # BM25 路排名: {doc_key: rank}
+    # BM25 路排名 + 收集 BM25 独有的 Document
     bm25_ranks: dict[str, int] = {}
-    # 构建 bm25_id → rank 映射
-    for rank, (bm25_id, _) in enumerate(bm25_ranked, 1):
-        bm25_ranks[bm25_id] = rank
-
-    # 收集所有出现过的 Document
     seen: dict[str, Document] = {}
+    for rank, (doc, _) in enumerate(bm25_ranked, 1):
+        key = _doc_key(doc)
+        bm25_ranks[key] = rank
+        if key not in seen:
+            seen[key] = doc
+
+    # 补全向量路独有的 Document（已包含在 bm25_ranks 中的不重复添加）
     for doc in vec_ranked:
         key = _doc_key(doc)
         if key not in seen:
             seen[key] = doc
-    # BM25 结果中可能有向量路没有的 doc — 这种情况无法回查,
-    # 因为 Document 对象不在 vec_ranked 中。后续 Ensemble Retriever 负责解决。
 
     # 计算 RRF 得分
     scores: list[tuple[Document, float]] = []
